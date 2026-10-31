@@ -13,7 +13,7 @@ from evals.scoring import (
     sensitive_env_var_metrics,
     unauthenticated_endpoint_metrics,
 )
-from evals.summary import call_cost, consistency, percentile, uncached_call_cost
+from evals.summary import call_cost, consistency, percentile
 
 
 def env_report(level):
@@ -135,24 +135,10 @@ def test_consistency_is_majority_agreement_per_item_across_repeats():
     assert consistency(runs) == pytest.approx((1 + 1 / 3) / 2)
 
 
-def test_call_cost_prices_cache_reads_and_writes_separately():
-    call = {"input_tokens": 1_000_000, "cached_input_tokens": 400_000, "cache_write_tokens": 100_000,
-            "output_tokens": 200_000}
-    price = {"input": 1.0, "cached_input": 0.1, "cache_write": 1.25, "output": 5.0}
-
-    assert call_cost(call, price) == pytest.approx(0.5 + 0.04 + 0.125 + 1.0)
-    assert uncached_call_cost(call, price) == pytest.approx(1.0 + 1.0)
-    assert call_cost(call, {**price, "input": None}) is None
-
-
-def test_call_cost_prefers_the_cost_claude_reported():
-    call = {"input_tokens": 1_000_000, "cached_input_tokens": 0, "cache_write_tokens": 0, "output_tokens": 0,
-            "cost_usd": 0.25}
-    price = {"input": 1.0, "cached_input": 0.1, "cache_write": 1.25, "output": 5.0}
-
-    assert call_cost(call, price) == 0.25
-    assert call_cost({**call, "cost_usd": None}, price) == pytest.approx(1.0)
-    assert call_cost({**call, "cost_usd": None}, None) is None
+def test_call_cost_is_the_cost_claude_reported():
+    assert call_cost({"input_tokens": 10, "cost_usd": 0.25}) == 0.25
+    assert call_cost({"input_tokens": 10, "cost_usd": None}) is None
+    assert call_cost({"input_tokens": 10}) is None
 
 
 def test_percentile_uses_nearest_rank():

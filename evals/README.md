@@ -11,7 +11,7 @@ python -m evals check spica-orchestrator # validate selected cases
 python -m evals run                      # run evals/matrix.yaml, then summarize
 python -m evals run --models claude-haiku-4-5 --cases synthetic-01 --repeats 1
 python -m evals run --models claude-opus-5-5 --effort high --workers 8
-python -m evals report evals/runs/<run>  # re-score a run with the current labels and prices
+python -m evals report evals/runs/<run>  # re-score a run with the current labels
 python -m evals prompts                  # list every agent's prompt variants
 python -m evals run --models claude-sonnet-5-5 --tasks unauthenticated_endpoints \
   --prompts unauthenticated_endpoints=baseline,combined --repeats 3
@@ -28,11 +28,11 @@ evals/runs/<UTC timestamp>/
   outputs/<model>/<case>/r<repeat>/<task>.json   # raw agent output; <task>--<prompt>.json for a prompt variant
   summary.md       # accuracy, consistency, cost, tokens and latency per model and task
   summary.csv      # the same numbers per model, task and case
-  results.json     # everything the report page shows, including prices and agent prompts
+  results.json     # everything the report page shows, including agent prompts
   report.html      # evals/report_template.html with results.json embedded
 ```
 
-`report.html` builds itself from the embedded data, so new models, cases, prices or agent prompts need no page
+`report.html` builds itself from the embedded data, so new models, cases or agent prompts need no page
 changes. Each run records every agent's instructions and a short prompt fingerprint, so a prompt change is visible.
 To refresh the published page, re-run or re-report, then ask Claude to republish `report.html` to the page's URL.
 
@@ -41,8 +41,7 @@ Every agent call runs through Claude Code (`claude -p`) on the signed-in subscri
 `--workers` sets how many agent tasks run at once (default 4); each one is a separate `claude` process.
 
 Cost is Claude Code's own estimate of what each call would cost on the API at list prices. A subscription is
-not billed per token, so read it as plan usage. When a call reports no cost, such as in runs recorded before this,
-it is priced from `evals/pricing.yaml` in USD per million tokens, and `n/a` means that file has no price for the model.
+not billed per token, so read it as plan usage. Runs recorded before this show `n/a`.
 Models must be listed in `KNOWN_MODELS` in `spica_advisor/runner.py`; `run` rejects any other name before starting.
 Failed runs count as empty predictions, and their tokens still count toward cost.
 

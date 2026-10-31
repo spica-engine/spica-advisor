@@ -4,8 +4,6 @@ import math
 from collections import Counter, defaultdict
 from pathlib import Path
 
-import yaml
-
 from evals.cases import EXPECTED_ROOT, RESOURCES_ROOT, find_cases
 from evals.harness import output_path
 from evals.prompts import BASELINE
@@ -15,11 +13,9 @@ from evals.workspace import render_cases_page
 from spica_advisor.metrics import OK_STATUS
 
 
-PRICING_PATH = Path("evals/pricing.yaml")
 REPORT_TEMPLATE_PATH = Path(__file__).with_name("report_template.html")
 DATA_PLACEHOLDER = "__BENCHMARK_DATA__"
 ALL_CASES = "all"
-PRICE_FIELDS = ("input", "cached_input", "cache_write", "output")
 PER_RUN_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_tokens", "requests", "tool_calls")
 PERCENT_SUFFIXES = ("accuracy", "precision", "recall", "f1", "coverage", "consistency")
 CONSISTENCY_HELP = ("Each test runs several times. This is how often the model gave the same answer each time. "
@@ -28,9 +24,8 @@ USAGE_HELP = {
     "runs": "How many times this agent ran: once per case for every repeat.",
     "failed_runs": "Runs that ended in an error and produced no answer. They count as wrong answers.",
     "failed_calls": "Requests to the model that failed, for example when it ran out of allowed steps.",
-    "cost_per_run": ("Average dollars per run: the cost Claude Code reports for the calls, "
-                     "or the tokens at the listed prices when it reports none."),
-    "uncached_cost_per_run": "What a run would cost without the provider's discount for text it has seen recently.",
+    "cost_per_run": ("Average dollars a run would cost on the API, as Claude Code estimates it. "
+                     "A subscription is not billed per token, but this shows how much of the plan a run uses."),
     "input_tokens_per_run": "How much text was sent to the model per run. A token is roughly three quarters of a word.",
     "cached_input_tokens_per_run": "The part of that text the provider had seen recently and charged less for.",
     "output_tokens_per_run": "How much text the model wrote back per run.",
@@ -42,28 +37,8 @@ USAGE_HELP = {
 }
 
 
-def load_pricing(path=PRICING_PATH):
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
-
-
-def call_cost(call, price):
-    if call.get("cost_usd") is not None:
-        return call["cost_usd"]
-    if not price or any(price.get(field) is None for field in PRICE_FIELDS):
-        return None
-    uncached_input = call["input_tokens"] - call["cached_input_tokens"] - call["cache_write_tokens"]
-    return (
-        uncached_input * price["input"]
-        + call["cached_input_tokens"] * price["cached_input"]
-        + call["cache_write_tokens"] * price["cache_write"]
-        + call["output_tokens"] * price["output"]
-    ) / 1_000_000
-
-
-def uncached_call_cost(call, price):
-    if not price or price.get("input") is None or price.get("output") is None:
-        return None
-    return (call["input_tokens"] * price["input"] + call["output_tokens"] * price["output"]) / 1_000_000
+def call_cost(call):
+    return call.get("cost_usd")
 
 
 def total(values):
@@ -142,21 +117,20 @@ def accuracy_metrics(task, runs):
     return {**SCORERS[task].metrics(counts), "consistency": consistency(runs)}
 
 
-def usage_metrics(runs, calls, price):
+def usage_metrics(runs, calls):
     run_count = len(runs)
     return {
         "runs": run_count,
         "failed_runs": sum(run["status"] != OK_STATUS for run in runs),
         "failed_calls": sum(call["status"] != OK_STATUS for call in calls),
-        "cost_per_run": ratio(total(call_cost(call, price) for call in calls), run_count),
-        "uncached_cost_per_run": ratio(total(uncached_call_cost(call, price) for call in calls), run_count),
+        "cost_per_run": ratio(total(call_cost(call) for call in calls), run_count),
         **{f"{field}_per_run": ratio(sum(call[field] for call in calls), run_count) for field in PER_RUN_FIELDS},
         "seconds_per_run": ratio(sum(run["wall_seconds"] for run in runs), run_count),
         "p95_call_seconds": percentile([call["wall_seconds"] for call in calls], 95),
     }
 
 
-USAGE_METRICS = list(usage_metrics([], [], None))
+USAGE_METRICS = list(usage_metrics([], []))
 
 
 def series_fields(runs):
@@ -164,31 +138,29 @@ def series_fields(runs):
     return {"series": first["series"], "model": first["model"], "prompt": first["prompt"]}
 
 
-def summary_rows(scored, calls, prices):
+def summary_rows(scored, calls):
     calls_by_group = group(calls, "series", "task", "case")
     rows = []
     for (series, task, case), runs in sorted(group(scored, "series", "task", "case").items()):
         rows.append({**series_fields(runs), "task": task, "case": case,
                      **accuracy_metrics(task, runs),
-                     **usage_metrics(runs, calls_by_group.get((series, task, case), []), prices.get(runs[0]["model"]))})
+                     **usage_metrics(runs, calls_by_group.get((series, task, case), []))})
     for (series, task), runs in sorted(group(scored, "series", "task").items()):
         task_calls = [call for call in calls if call["series"] == series and call["task"] == task]
         rows.append({**series_fields(runs), "task": task, "case": ALL_CASES,
                      **accuracy_metrics(task, runs),
-                     **usage_metrics(runs, task_calls, prices.get(runs[0]["model"]))})
+                     **usage_metrics(runs, task_calls)})
     return rows
 
 
-def series_totals(calls, prices):
+def series_totals(calls):
     totals = []
     for (series,), series_calls in sorted(group(calls, "series").items()):
-        price = prices.get(series_calls[0]["model"])
         totals.append({
             **series_fields(series_calls),
             "calls": len(series_calls),
             "failed_calls": sum(call["status"] != OK_STATUS for call in series_calls),
-            "total_cost": total(call_cost(call, price) for call in series_calls),
-            "uncached_total_cost": total(uncached_call_cost(call, price) for call in series_calls),
+            "total_cost": total(call_cost(call) for call in series_calls),
             "llm_seconds": sum(call["wall_seconds"] for call in series_calls),
         })
     return totals
@@ -239,8 +211,7 @@ def render_markdown(run_name, matrix, rows, totals):
         *([prompts_line(matrix)] if by_prompt else []),
         "",
         "Failed runs count as empty predictions. Consistency is the share of repeats that agree with the majority "
-        "answer per labeled item. Costs are the ones Claude Code reports, or come from `evals/pricing.yaml` "
-        "when it reports none; n/a means neither exists.",
+        "answer per labeled item. Costs are Claude Code's API-equivalent estimates; n/a means a call reported none.",
         "",
         "## Accuracy",
     ]
@@ -270,7 +241,7 @@ def render_markdown(run_name, matrix, rows, totals):
         [[row["series"], row["task"], *(format_value(metric, row[metric]) for metric in USAGE_METRICS)] for row in overall],
     )]
 
-    total_metrics = ["calls", "failed_calls", "total_cost", "uncached_total_cost", "llm_seconds"]
+    total_metrics = ["calls", "failed_calls", "total_cost", "llm_seconds"]
     lines += ["", f"## Totals per {series_header}", "", *table(
         [series_header, *total_metrics],
         [[row["series"], *(format_value(metric, row[metric]) for metric in total_metrics)] for row in totals],
@@ -278,7 +249,7 @@ def render_markdown(run_name, matrix, rows, totals):
     return "\n".join(lines)
 
 
-def benchmark_data(run_name, matrix, pricing, rows, totals):
+def benchmark_data(run_name, matrix, rows, totals):
     return {
         "run": run_name,
         "matrix": {
@@ -289,11 +260,6 @@ def benchmark_data(run_name, matrix, pricing, rows, totals):
             "series": matrix_series(matrix),
         },
         "metadata": matrix.get("metadata", {}),
-        "pricing": {
-            "checked_on": str(pricing.get("checked_on", "")),
-            "sources": pricing.get("sources", []),
-            "models": {model: pricing["usd_per_million_tokens"].get(model) for model in matrix["models"]},
-        },
         "tasks": {
             task: {
                 "description": SCORERS[task].description,
@@ -327,7 +293,7 @@ def write_csv(path, rows):
         writer.writerows(rows)
 
 
-def write_summary(run_dir, expected_root=EXPECTED_ROOT, resources_root=RESOURCES_ROOT, pricing_path=PRICING_PATH):
+def write_summary(run_dir, expected_root=EXPECTED_ROOT, resources_root=RESOURCES_ROOT):
     matrix = read_json(run_dir / "matrix.json")
     by_prompt = compares_prompts(matrix)
     runs = with_series(read_jsonl(run_dir / "runs.jsonl"), by_prompt)
@@ -336,14 +302,12 @@ def write_summary(run_dir, expected_root=EXPECTED_ROOT, resources_root=RESOURCES
         case.name: case.load_labels().model_dump()
         for case in find_cases(expected_root, resources_root, matrix["cases"])
     }
-    pricing = load_pricing(pricing_path)
-    prices = pricing["usd_per_million_tokens"]
-    rows = summary_rows(scored_runs(run_dir, runs, labels), calls, prices)
-    totals = series_totals(calls, prices)
+    rows = summary_rows(scored_runs(run_dir, runs, labels), calls)
+    totals = series_totals(calls)
     summary_path = run_dir / "summary.md"
     summary_path.write_text(render_markdown(run_dir.name, matrix, rows, totals), encoding="utf-8")
     write_csv(run_dir / "summary.csv", rows)
-    data = benchmark_data(run_dir.name, matrix, pricing, rows, totals)
+    data = benchmark_data(run_dir.name, matrix, rows, totals)
     write_json(run_dir / "results.json", data)
     (run_dir / "report.html").write_text(render_html(data), encoding="utf-8")
     (run_dir / "cases.html").write_text(render_cases_page(data), encoding="utf-8")
