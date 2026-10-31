@@ -106,3 +106,10 @@ TASKS = {
         ),
     )
 }
+
+
+INVESTIGATION_TASKS = {
+    "sensitive-env-vars": ["sensitive_env_vars"],
+    "unauthenticated-endpoints": ["unauthenticated_endpoints"],
+    "broken-access-control": ["policy_attachments", "bucket_acl"],
+}

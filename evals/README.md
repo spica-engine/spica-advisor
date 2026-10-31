@@ -12,6 +12,7 @@ python -m evals run                      # run evals/matrix.yaml, then summarize
 python -m evals run --models claude-haiku-4-5 --cases synthetic-01 --repeats 1
 python -m evals run --models claude-opus-5-5 --effort low high --workers 8   # compare efforts in one run
 python -m evals report evals/runs/<run>  # re-score a run with the current labels
+python -m evals run --investigations broken-access-control   # the agents of one investigation
 python -m evals prompts                  # list every agent's prompt variants
 python -m evals run --models claude-sonnet-5-5 --tasks unauthenticated_endpoints \
   --prompts unauthenticated_endpoints=baseline,combined --repeats 3

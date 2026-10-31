@@ -13,6 +13,7 @@ from evals.harness import (
 from evals.prompts import all_variants, describe_variant
 from evals.storage import read_json, write_json
 from evals.summary import write_summary
+from evals.tasks import INVESTIGATION_TASKS
 from evals.validation import check_case
 from evals.workspace import export_cases, import_cases
 from spica_advisor.log import configure_logging
@@ -43,7 +44,10 @@ def parse_args():
     run = commands.add_parser("run", help="run the agents over the cases and summarize the results")
     run.add_argument("--models", nargs="+", metavar="MODEL", help="overrides evals/matrix.yaml")
     run.add_argument("--cases", nargs="+", metavar="CASE", help="overrides evals/matrix.yaml")
-    run.add_argument("--tasks", nargs="+", metavar="TASK", help="overrides evals/matrix.yaml")
+    selection = run.add_mutually_exclusive_group()
+    selection.add_argument("--tasks", nargs="+", metavar="TASK", help="overrides evals/matrix.yaml")
+    selection.add_argument("--investigations", nargs="+", metavar="NAME", choices=sorted(INVESTIGATION_TASKS),
+                           help="run the agents of these investigations; overrides evals/matrix.yaml")
     run.add_argument("--repeats", type=int, help="overrides evals/matrix.yaml")
     run.add_argument("--effort", nargs="+", choices=(DEFAULT_EFFORT, *EFFORTS), metavar="EFFORT",
                      help=f"efforts to compare, {DEFAULT_EFFORT} meaning Claude Code's own; overrides evals/matrix.yaml")
@@ -84,10 +88,15 @@ def check(names):
         raise SystemExit(1)
 
 
+def investigation_tasks(names):
+    return [task for name in dict.fromkeys(names) for task in INVESTIGATION_TASKS[name]]
+
+
 def run(args):
     configure_logging(debug=False, log_file=None, log_format="text")
     prompts = dict(args.prompts) if args.prompts else None
-    matrix = resolve_matrix(models=args.models, cases=args.cases, repeats=args.repeats, tasks=args.tasks,
+    tasks = investigation_tasks(args.investigations) if args.investigations else args.tasks
+    matrix = resolve_matrix(models=args.models, cases=args.cases, repeats=args.repeats, tasks=tasks,
                             prompts=prompts, efforts=args.effort)
     cases = validated_cases(matrix.cases)
     run_dir = new_run_dir()
