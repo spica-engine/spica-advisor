@@ -1,7 +1,7 @@
 import re
 from collections.abc import Iterable
 
-from spica_advisor.function_files import function_file_name
+from spica_advisor.function_files import restore_function_ids as restore_ids
 from spica_advisor.investigations.broken_access_control.agents import BUCKET_ACL_AGENT, POLICY_ATTACHMENT_AGENT
 from spica_advisor.investigations.broken_access_control.context import BrokenAccessControlContext
 from spica_advisor.investigations.broken_access_control.prompts import ATTACHMENT_INPUT, bucket_acl_input
@@ -75,10 +75,7 @@ def policy_attachments(policy, attachment_reports, function_locations):
 
 
 def restore_function_ids(reports, functions):
-    ids_by_file_name = {function_file_name(function): function["_id"] for function in functions}
-    for report in reports:
-        for location in (report.attachment, report.definition):
-            location.function_id = ids_by_file_name.get(location.function_id, location.function_id)
+    restore_ids([location for report in reports for location in (report.attachment, report.definition)], functions)
 
 
 def read_functions(context: BrokenAccessControlContext):

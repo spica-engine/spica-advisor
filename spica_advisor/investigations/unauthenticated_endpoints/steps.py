@@ -1,9 +1,18 @@
+from dataclasses import dataclass
+
+from spica_advisor.function_files import restore_function_ids
 from spica_advisor.investigations.unauthenticated_endpoints.agents import ENDPOINT_RISK_AGENT
 from spica_advisor.investigations.unauthenticated_endpoints.context import UnauthenticatedEndpointsContext
 from spica_advisor.investigations.unauthenticated_endpoints.handlers import has_public_endpoint, served_handler_names
 from spica_advisor.investigations.unauthenticated_endpoints.prompts import endpoint_risk_inputs
 from spica_advisor.log import LOGGER
 from spica_advisor.resources import load_functions, resource_locations
+
+
+@dataclass(frozen=True)
+class EndpointCall:
+    prompt: str
+    functions: tuple = ()
 
 
 def read_functions(context: UnauthenticatedEndpointsContext):
@@ -24,22 +33,25 @@ def prepare_for_analysis(context: UnauthenticatedEndpointsContext):
     for function in context.public_functions:
         handlers = served_handler_names(function)
         if handlers:
-            context.analysis_inputs.append({"_id": function["_id"], "content": function["content"], "handlers": handlers})
+            context.analysis_inputs.append({
+                "_id": function["_id"], "name": function["name"], "content": function["content"], "handlers": handlers,
+            })
     skipped = len(context.public_functions) - len(context.analysis_inputs)
     if skipped:
         LOGGER.info("Skipped %d functions whose public triggers have no exported handler", skipped)
 
 
-def endpoint_risk_prompts(context: UnauthenticatedEndpointsContext):
-    return endpoint_risk_inputs(context.analysis_inputs)
+def endpoint_risk_calls(context: UnauthenticatedEndpointsContext):
+    return [EndpointCall(prompt) for prompt in endpoint_risk_inputs(context.analysis_inputs)]
 
 
-def analyze_endpoints(context: UnauthenticatedEndpointsContext, build_prompts=endpoint_risk_prompts):
-    prompts = build_prompts(context)
-    if len(prompts) > 1:
-        LOGGER.info("Analyzing %d functions in %d batches", len(context.analysis_inputs), len(prompts))
-    for prompt in prompts:
-        response = context.runner.run(ENDPOINT_RISK_AGENT, prompt)
+def analyze_endpoints(context: UnauthenticatedEndpointsContext, build_calls=endpoint_risk_calls):
+    calls = build_calls(context)
+    if len(calls) > 1:
+        LOGGER.info("Analyzing %d functions in %d calls", len(context.analysis_inputs), len(calls))
+    for call in calls:
+        response = context.runner.run(ENDPOINT_RISK_AGENT, call.prompt, functions=call.functions)
+        restore_function_ids(response.functions, context.functions)
         context.function_risks.extend(response.functions)
 
 

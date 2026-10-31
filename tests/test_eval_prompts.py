@@ -88,6 +88,7 @@ def test_source_only_input_rebuilds_the_legacy_prompt_input():
         {"_id": "fn-1", "schema": schema, "content": "export function create(req, res) {}"},
     ])
 
-    [prompt] = endpoint_prompts_without_handler_names(context)
+    [call] = endpoint_prompts_without_handler_names(context)
 
-    assert prompt == "Functions:\nfunction_id: fn-1\n```\nexport function create(req, res) {}\n```"
+    assert call.functions == ()
+    assert call.prompt == "Functions:\nfunction_id: fn-1\n```\nexport function create(req, res) {}\n```"

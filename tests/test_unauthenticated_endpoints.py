@@ -70,9 +70,10 @@ class FakeRunner:
         self.agents = []
         self.prompts = []
 
-    def run(self, agent, prompt):
+    def run(self, agent, prompt, functions=()):
         self.agents.append(agent)
         self.prompts.append(prompt)
+        self.functions = functions
         return self.response
 
 
@@ -148,7 +149,7 @@ class SequenceRunner:
         self.responses = iter(responses)
         self.prompts = []
 
-    def run(self, agent, prompt):
+    def run(self, agent, prompt, functions=()):
         self.prompts.append(prompt)
         return next(self.responses)
 
@@ -223,3 +224,37 @@ def test_skips_agent_when_no_public_trigger_has_a_handler(tmp_path):
 ])
 def test_exported_names_cover_the_esm_export_forms(source, names):
     assert exported_names(source) == names
+
+
+def test_files_input_gives_the_agent_every_function_and_the_public_handlers_as_starting_points(tmp_path):
+    from evals.inputs import endpoint_calls_with_files
+
+    write_function(tmp_path, "demo", "fn-api", PUBLIC_HTTP + PUBLIC_HTTP.replace("handler", "default").replace("/public", "/"),
+                   "export default () => {}\nexport function handler(req, res) { return requireAuth(req); }")
+    write_function(tmp_path, "demo", "fn-helpers", AUTHORIZED_HTTP, "export function requireAuth(req) {}")
+    runner = FakeRunner(FunctionRiskResponse(functions=[]))
+
+    context = unauthenticated_endpoints.build().create_context(tmp_path / "demo", runner)
+    for step_name, step in context_steps_until_analysis(context):
+        step(context)
+
+    [call] = endpoint_calls_with_files(context)
+
+    assert call.prompt == ("Judge these handlers.\nfunction_id: fn-api\nhttp_handlers: default, handler\n"
+                           "`default` is the default export of the file.")
+    assert sorted(function["_id"] for function in call.functions) == ["fn-api", "fn-helpers"]
+
+
+def context_steps_until_analysis(context):
+    from spica_advisor.investigations.unauthenticated_endpoints import steps
+
+    return [("read", steps.read_functions), ("find", steps.find_public_functions), ("prepare", steps.prepare_for_analysis)]
+
+
+def test_file_names_in_the_answer_are_mapped_back_to_function_ids(tmp_path):
+    write_function(tmp_path, "demo", "fn-1", PUBLIC_HTTP, "export function handler(req, res) {}")
+    runner = FakeRunner(FunctionRiskResponse(functions=[risk("fn-1.js")]))
+
+    report = unauthenticated_endpoints.build().run(tmp_path / "demo", runner)
+
+    assert [entry["function_id"] for entry in report] == ["fn-1"]

@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from evals.inputs import endpoint_prompts_without_handler_names
+from evals.inputs import endpoint_calls_with_files, endpoint_prompts_without_handler_names
 from spica_advisor.agent import Agent
 from spica_advisor.investigations.broken_access_control.agents import BUCKET_ACL_AGENT, POLICY_ATTACHMENT_AGENT
 from spica_advisor.investigations.broken_access_control.context import BrokenAccessControlContext
@@ -16,7 +16,7 @@ from spica_advisor.investigations.unauthenticated_endpoints.context import Unaut
 from spica_advisor.investigations.unauthenticated_endpoints.handlers import has_public_endpoint
 from spica_advisor.investigations.unauthenticated_endpoints.steps import (
     analyze_endpoints,
-    endpoint_risk_prompts,
+    endpoint_risk_calls,
     find_public_functions,
     prepare_for_analysis,
 )
@@ -51,7 +51,7 @@ def predict_unauthenticated_endpoints(case, labels, runner, build_input=None):
     context = UnauthenticatedEndpointsContext(project_dir=case.project_dir, runner=runner)
     for step in (read_endpoint_functions, find_public_functions, prepare_for_analysis):
         step(context)
-    analyze_endpoints(context, build_input or endpoint_risk_prompts)
+    analyze_endpoints(context, build_input or endpoint_risk_calls)
     return [function_risk.model_dump() for function_risk in context.function_risks]
 
 
@@ -90,7 +90,7 @@ TASKS = {
                 has_public_endpoint(function["schema"]) for function in load_functions(case.project_dir)
             ),
             predict=predict_unauthenticated_endpoints,
-            inputs={"source-only": endpoint_prompts_without_handler_names},
+            inputs={"source-only": endpoint_prompts_without_handler_names, "files": endpoint_calls_with_files},
         ),
         AgentTask(
             name="policy_attachments",
