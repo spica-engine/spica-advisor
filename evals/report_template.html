@@ -3,7 +3,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
-/* Layout: one report column - run header, model strip, agent x model leaderboard, tabbed agent detail (quality bars + quality/cost plot + full numbers), method notes. */
+/* Layout: one report column - run header, model strip, agent x model leaderboard, tabbed agent detail (quality bars + quality/cost plot + full numbers), pricing and method notes. */
 :root {
   --bg: #f4f5f7;
   --surface: #ffffff;
@@ -272,6 +272,10 @@ td .metric-help { font-size: 12.5px; color: var(--muted); margin-top: 2px; max-w
     return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
+  function formatPrice(value) {
+    return "$" + value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+  }
+
   function formatPercent(value) { return (value * 100).toFixed(1) + "%"; }
   function formatCost(value) {
     if (value >= 1) return "$" + value.toFixed(2);
@@ -400,7 +404,7 @@ td .metric-help { font-size: 12.5px; color: var(--muted); margin-top: 2px; max-w
       ]);
     });
     return el("section", { class: "section" }, [
-      sectionHead(byPrompt ? "Model and prompt pairs" : "Models", "A full pass is every agent over every case once. Costs are what the same calls would cost on the API, as Claude Code estimates them."),
+      sectionHead(byPrompt ? "Model and prompt pairs" : "Models", "A full pass is every agent over every case once. Costs are what Claude Code reports, or the prices listed at the bottom when it reports none."),
       el("div", { class: "models" }, cards),
     ]);
   }
@@ -413,9 +417,9 @@ td .metric-help { font-size: 12.5px; color: var(--muted); margin-top: 2px; max-w
     ["F1", "One score that combines precision and recall. It is only high when the model catches the real problems and avoids false alarms."],
     ["Accuracy", "The share of items the model answered exactly right, such as giving an env var the right sensitivity level."],
     ["Consistency", "Every test runs several times. This shows how often the model gave the same answer each time."],
-    ["Cost per run", "What one agent run would cost on the API, as Claude Code estimates it. A subscription is not billed per token, so read it as plan usage."],
+    ["Cost per run", "Dollars per agent run, as Claude Code reports them or at the prices listed at the bottom. A full pass runs every agent on every case once."],
     ["Time per run", "How long one agent run took. Slow models make every security scan slower."],
-    ["Tokens", "Models read and write text in small pieces called tokens, roughly three quarters of a word each. More tokens use more of the plan."],
+    ["Tokens", "Models read and write text in small pieces called tokens, roughly three quarters of a word each. Providers charge per token."],
     ["Failed calls", "Requests where the model returned an error or ran out of allowed steps. A failed run counts as a wrong answer."],
   ];
 
@@ -523,7 +527,7 @@ td .metric-help { font-size: 12.5px; color: var(--muted); margin-top: 2px; max-w
       .map((point) => ({ ...point, x: point.summary[xMetric], y: point.summary[yMetric] }));
     const plotted = points.filter((point) => typeof point.x === "number" && point.x > 0 && typeof point.y === "number");
     const skipped = points.filter((point) => !plotted.includes(point)).map((point) => point.name);
-    note.textContent = skipped.length ? `Not plotted (no ${xMetric.includes("cost") ? "cost" : "value"}): ${skipped.join(", ")}.` : "";
+    note.textContent = skipped.length ? `Not plotted (no ${xMetric.includes("cost") ? "price" : "value"}): ${skipped.join(", ")}.` : "";
     container.replaceChildren();
     if (!plotted.length) {
       container.appendChild(el("p", { class: "plot-note", text: "Nothing to plot for this agent yet." }));
@@ -729,21 +733,34 @@ td .metric-help { font-size: 12.5px; color: var(--muted); margin-top: 2px; max-w
     ]);
   }
 
-  function renderMethod() {
+  function renderPricing() {
+    const fields = [["input", "Input"], ["cached_input", "Cached input"], ["cache_write", "Cache write"], ["output", "Output"]];
+    const header = el("tr", {}, [el("th", { text: "Model" }), ...fields.map(([, label]) => el("th", { class: "num", text: label }))]);
+    const body = data.matrix.models.map((model) => {
+      const price = data.pricing.models[model];
+      const swatch = byPrompt ? null : el("span", { class: "swatch", style: `background:${seriesColor(model)}` });
+      return el("tr", {}, [
+        el("td", {}, [el("span", { class: "legend" }, [el("span", {}, [swatch, model])])]),
+        ...fields.map(([field]) => el("td", { class: "num", text: price && typeof price[field] === "number" ? formatPrice(price[field]) : "n/a" })),
+      ]);
+    });
+    const sources = (data.pricing.sources || []).map((source) => el("li", {}, [el("a", { href: source, target: "_blank", rel: "noopener", text: source })]));
     return el("section", { class: "section" }, [
-      sectionHead("Method", "How the numbers on this page are made."),
+      sectionHead("Prices and method", `USD per million tokens${data.pricing.checked_on ? ", checked " + data.pricing.checked_on : ""}.`),
+      el("div", { class: "table-wrap" }, [el("table", {}, [el("thead", {}, [header]), el("tbody", {}, body)])]),
       el("ul", { class: "notes" }, [
         el("li", { text: "Only the LLM agents are scored. Each agent gets the input the production code builds, and its output is compared with hand-checked labels." }),
         el("li", { text: "Every agent call runs through Claude Code (claude -p) with the model and effort shown above." }),
         el("li", { text: "Ratios are pooled over all cases and repeats before dividing. Failed runs count as empty answers, and their tokens still count toward cost." }),
         el("li", { text: "Consistency is the share of repeats that agree with the majority answer for each labeled item. It needs at least two repeats." }),
-        el("li", { text: "Costs are Claude Code's estimate of what the calls would cost on the API, at list prices. n/a means a call reported no cost." }),
+        el("li", { text: "Token counts come from each provider and are not comparable across providers, because tokenizers differ. Compare cost and time instead." }),
         el("li", { text: "A changed prompt fingerprint means that agent's instructions changed between runs." }),
+        ...sources,
       ]),
     ]);
   }
 
   renderRunMeta();
-  content.append(renderModels(), renderGuide(), renderLeaderboard(), renderAgents(), renderMethod());
+  content.append(renderModels(), renderGuide(), renderLeaderboard(), renderAgents(), renderPricing());
 })();
 </script>
