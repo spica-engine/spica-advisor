@@ -1,7 +1,7 @@
 from spica_advisor.investigations import broken_access_control
 from spica_advisor.investigations.broken_access_control.context import BrokenAccessControlContext
 from spica_advisor.investigations.broken_access_control.models import CodeLocation, Report
-from spica_advisor.investigations.broken_access_control.steps import map_findings_to_policies
+from spica_advisor.investigations.broken_access_control.steps import map_findings_to_policies, restore_function_ids
 
 
 def write_schema(project_dir, folder, content):
@@ -97,6 +97,16 @@ def test_findings_name_policies_and_buckets_with_their_paths(tmp_path):
 class FailingRunner:
     def run(self, *args, **kwargs):
         raise AssertionError("agent should not run")
+
+
+def test_function_file_names_are_mapped_back_to_function_ids():
+    functions = [{"_id": "fn/1", "name": "Orders"}, {"_id": "f3", "name": "Config"}]
+    reports = [attachment("fn_1.js", "m"), attachment("f3", "m")]
+
+    restore_function_ids(reports, functions)
+
+    assert [(report.attachment.function_id, report.definition.function_id) for report in reports] == [
+        ("fn/1", "f3"), ("f3", "f3")]
 
 
 def test_skips_agents_when_project_has_no_functions(tmp_path):

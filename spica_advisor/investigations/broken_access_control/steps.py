@@ -1,6 +1,7 @@
 import re
 from collections.abc import Iterable
 
+from spica_advisor.function_files import function_file_name
 from spica_advisor.investigations.broken_access_control.agents import BUCKET_ACL_AGENT, POLICY_ATTACHMENT_AGENT
 from spica_advisor.investigations.broken_access_control.context import BrokenAccessControlContext
 from spica_advisor.investigations.broken_access_control.prompts import ATTACHMENT_INPUT, bucket_acl_input
@@ -73,6 +74,13 @@ def policy_attachments(policy, attachment_reports, function_locations):
     ]
 
 
+def restore_function_ids(reports, functions):
+    ids_by_file_name = {function_file_name(function): function["_id"] for function in functions}
+    for report in reports:
+        for location in (report.attachment, report.definition):
+            location.function_id = ids_by_file_name.get(location.function_id, location.function_id)
+
+
 def read_functions(context: BrokenAccessControlContext):
     context.functions = load_functions(context.project_dir)
     LOGGER.debug("Discovered %d functions", len(context.functions))
@@ -86,6 +94,7 @@ def find_policy_attachments(context: BrokenAccessControlContext):
         ATTACHMENT_INPUT,
         functions=context.functions,
     )
+    restore_function_ids(response.reports, context.functions)
     context.attachment_reports = response.reports
     attaching_function_ids = {report.attachment.function_id for report in context.attachment_reports}
     LOGGER.info("Found %d functions that attach policies to users", len(attaching_function_ids))

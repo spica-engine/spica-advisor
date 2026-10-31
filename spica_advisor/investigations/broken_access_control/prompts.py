@@ -13,8 +13,10 @@ Definition could come from other spica functions, and imports at the top of the 
 They could be \"process.env.<ENVIRONMENT_NAME>\", put name of them to the result if so, 
 and also they could be hardcoded \"POLICY_ID\", put id of them to the result if so. 
 Use the Grep, Glob and Read tools to search the function files.
-Search with short single-line patterns such as identifiers or call names.
-Do not search again for code that a previous result already returned.
+Find code with Grep, using short single-line patterns such as identifiers or call names, then Read
+only the lines around a match. Read may show just part of a long file, so do not rely on it to find code.
+Do not repeat a search whose result you already have.
+For every function id, use the function_id from the file listing, never the file name or the function name.
 Return attachment object including function id and matched code where the policy was attached,
 definition object including function id and matched code where the policy was defined,
 and policy_id and/or policy_name found.
