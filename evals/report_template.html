@@ -303,14 +303,18 @@ td .metric-help { font-size: 12.5px; color: var(--muted); margin-top: 2px; max-w
     return;
   }
 
-  const seriesList = data.matrix.series || data.matrix.models.map((model) => ({ name: model, model, prompt: "baseline" }));
+  const seriesList = data.matrix.series || data.matrix.models.map((model) => ({ name: model, model, effort: "default", prompt: "baseline" }));
   const series = seriesList.map((entry) => entry.name);
   const seriesModel = Object.fromEntries(seriesList.map((entry) => [entry.name, entry.model]));
+  const seriesEffort = Object.fromEntries(seriesList.map((entry) => [entry.name, entry.effort || "default"]));
   const byPrompt = Boolean(data.matrix.compares_prompts);
-  const seriesNoun = byPrompt ? "model and prompt" : "model";
+  const byEffort = Boolean(data.matrix.compares_efforts);
+  const dimensions = ["model", ...(byEffort ? ["effort"] : []), ...(byPrompt ? ["prompt"] : [])];
+  const seriesNoun = dimensions.length > 1 ? `${dimensions.slice(0, -1).join(", ")} and ${dimensions[dimensions.length - 1]}` : "model";
+  const effortText = (effort) => (effort === "default" ? "default effort" : `effort ${effort}`);
+  const runEfforts = (data.matrix.efforts || ["default"]).map(effortText).join(", ");
   const tasks = data.matrix.tasks.filter((task) => data.tasks[task]);
   const agents = (data.metadata && data.metadata.agents) || {};
-  const effortLabel = data.matrix.effort ? `effort ${data.matrix.effort}` : "default effort";
   const rows = {};
   data.rows.forEach((row) => { rows[`${row.series || row.model}|${row.task}|${row.case}`] = row; });
   const row = (name, task, caseName) => rows[`${name}|${task}|${caseName || "all"}`];
@@ -366,11 +370,11 @@ td .metric-help { font-size: 12.5px; color: var(--muted); margin-top: 2px; max-w
     [
       el("span", {}, ["Run ", el("span", { class: "mono", text: data.run })]),
       started ? el("span", { text: "Started " + started.replace("T", " ").replace("+00:00", " UTC") }) : null,
-      el("span", { text: byPrompt ? `${series.length} model and prompt pairs` : `${series.length} models` }),
+      el("span", { text: dimensions.length > 1 ? `${series.length} ${seriesNoun} combinations` : `${series.length} models` }),
       el("span", { text: `${data.matrix.cases.length} cases` }),
       el("span", { text: `${data.matrix.repeats} repeat${data.matrix.repeats === 1 ? "" : "s"}` }),
       el("span", { text: `${tasks.length} agents` }),
-      el("span", { text: `Claude Code, ${effortLabel}` }),
+      el("span", { text: `Claude Code, ${runEfforts}` }),
     ].forEach((node) => node && meta.appendChild(node));
   }
 
@@ -386,7 +390,7 @@ td .metric-help { font-size: 12.5px; color: var(--muted); margin-top: 2px; max-w
       return el("article", { class: "model-card" }, [
         el("div", {}, [
           el("div", { class: "model-name" }, [el("span", { class: "swatch", style: `background:${seriesColor(name)}` }), name]),
-          el("div", { class: "model-id mono", text: `${seriesModel[name]} · ${effortLabel}` }),
+          el("div", { class: "model-id mono", text: `${seriesModel[name]} · ${effortText(seriesEffort[name])}` }),
         ]),
         el("dl", { class: "model-stats" }, [
           el("div", {}, [el("dt", { text: "Cost per full pass" }), el("dd", { text: format("cost", perPass, []) })]),
@@ -400,7 +404,7 @@ td .metric-help { font-size: 12.5px; color: var(--muted); margin-top: 2px; max-w
       ]);
     });
     return el("section", { class: "section" }, [
-      sectionHead(byPrompt ? "Model and prompt pairs" : "Models", "A full pass is every agent over every case once. Costs are what the same calls would cost on the API, as Claude Code estimates them."),
+      sectionHead(dimensions.length > 1 ? `${humanize(seriesNoun)} combinations` : "Models", "A full pass is every agent over every case once. Costs are what the same calls would cost on the API, as Claude Code estimates them."),
       el("div", { class: "models" }, cards),
     ]);
   }

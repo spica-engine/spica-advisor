@@ -10,7 +10,7 @@ python -m evals check                    # validate every case
 python -m evals check spica-orchestrator # validate selected cases
 python -m evals run                      # run evals/matrix.yaml, then summarize
 python -m evals run --models claude-haiku-4-5 --cases synthetic-01 --repeats 1
-python -m evals run --models claude-opus-5-5 --effort high --workers 8
+python -m evals run --models claude-opus-5-5 --effort low high --workers 8   # compare efforts in one run
 python -m evals report evals/runs/<run>  # re-score a run with the current labels
 python -m evals prompts                  # list every agent's prompt variants
 python -m evals run --models claude-sonnet-5-5 --tasks unauthenticated_endpoints \
@@ -22,10 +22,10 @@ production steps build, writes results as it goes, and summarizes at the end. A 
 
 ```
 evals/runs/<UTC timestamp>/
-  matrix.json      # models, effort, cases, repeats and tasks of the run
+  matrix.json      # models, efforts, cases, repeats and tasks of the run
   runs.jsonl       # one line per agent task run: status, wall time, call count
   calls.jsonl      # one line per agent call: tokens, requests, tool calls, latency, status
-  outputs/<model>/<case>/r<repeat>/<task>.json   # raw agent output; <task>--<prompt>.json for a prompt variant
+  outputs/<model>/<effort>/<case>/r<repeat>/<task>.json   # raw agent output; <task>--<prompt>.json for a prompt variant
   summary.md       # accuracy, consistency, cost, tokens and latency per model and task
   summary.csv      # the same numbers per model, task and case
   results.json     # everything the report page shows, including agent prompts
@@ -36,8 +36,9 @@ evals/runs/<UTC timestamp>/
 changes. Each run records every agent's instructions and a short prompt fingerprint, so a prompt change is visible.
 To refresh the published page, re-run or re-report, then ask Claude to republish `report.html` to the page's URL.
 
-Every agent call runs through Claude Code (`claude -p`) on the signed-in subscription. `effort` in
-`evals/matrix.yaml` or `--effort` applies to the whole run, and Claude Code picks its default when it is unset.
+Every agent call runs through Claude Code (`claude -p`) on the signed-in subscription. `efforts` in
+`evals/matrix.yaml` (`efforts: [default]`) or `--effort` lists the efforts to run, and `default` means Claude Code's own.
+With more than one, every model runs at each effort and the series are named `model · effort`.
 `--workers` sets how many agent tasks run at once (default 4); each one is a separate `claude` process.
 
 Cost is Claude Code's own estimate of what each call would cost on the API at list prices. A subscription is

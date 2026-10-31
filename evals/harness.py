@@ -30,6 +30,7 @@ MATRIX_PATH = Path("evals/matrix.yaml")
 RUNS_ROOT = Path("evals/runs")
 ALL = "all"
 DEFAULT_WORKERS = 4
+DEFAULT_EFFORT = "default"
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ class Matrix:
     repeats: int
     tasks: list[str]
     prompts: dict[str, list[str]] = field(default_factory=dict)
-    effort: str | None = None
+    efforts: list[str] = field(default_factory=lambda: [DEFAULT_EFFORT])
 
     def prompts_for(self, task):
         return self.prompts.get(task, [BASELINE])
@@ -59,7 +60,11 @@ def prompt_problems(prompts, tasks, prompts_root):
     return problems
 
 
-def resolve_matrix(path=MATRIX_PATH, models=None, cases=None, repeats=None, tasks=None, prompts=None, effort=None,
+def effort_flag(effort):
+    return None if effort == DEFAULT_EFFORT else effort
+
+
+def resolve_matrix(path=MATRIX_PATH, models=None, cases=None, repeats=None, tasks=None, prompts=None, efforts=None,
                    prompts_root=PROMPTS_ROOT):
     defaults = yaml.safe_load(path.read_text(encoding="utf-8"))
     matrix = Matrix(
@@ -68,15 +73,17 @@ def resolve_matrix(path=MATRIX_PATH, models=None, cases=None, repeats=None, task
         repeats=repeats or defaults["repeats"],
         tasks=tasks or expand(defaults["tasks"], list(TASKS)),
         prompts=prompts or defaults.get("prompts") or {},
-        effort=effort or defaults.get("effort"),
+        efforts=efforts or defaults.get("efforts") or [DEFAULT_EFFORT],
     )
     unknown_models = sorted(set(matrix.models) - set(KNOWN_MODELS))
     unknown_tasks = sorted(set(matrix.tasks) - set(TASKS))
-    unknown_effort = matrix.effort is not None and matrix.effort not in EFFORTS
-    if not matrix.models or unknown_models or unknown_tasks or unknown_effort or matrix.repeats < 1:
+    unknown_efforts = sorted(set(matrix.efforts) - {DEFAULT_EFFORT, *EFFORTS})
+    bad_efforts = unknown_efforts or not matrix.efforts or len(set(matrix.efforts)) != len(matrix.efforts)
+    if not matrix.models or unknown_models or unknown_tasks or bad_efforts or matrix.repeats < 1:
         raise ValueError(
             f"invalid matrix: models {matrix.models}, unknown models {unknown_models}, "
-            f"unknown tasks {unknown_tasks}, effort {matrix.effort!r}, repeats {matrix.repeats}"
+            f"unknown tasks {unknown_tasks}, efforts {matrix.efforts} (unknown {unknown_efforts}, "
+            f"must be a non-empty list without duplicates), repeats {matrix.repeats}"
         )
     problems = prompt_problems(matrix.prompts, matrix.tasks, prompts_root)
     if problems:
@@ -99,14 +106,15 @@ def new_run_dir(root=RUNS_ROOT):
             continue
 
 
-def output_path(run_dir, model, case, repeat, task, prompt=BASELINE):
+def output_path(run_dir, model, case, repeat, task, prompt=BASELINE, effort=DEFAULT_EFFORT):
     file_name = f"{task}.json" if prompt == BASELINE else f"{task}--{prompt}.json"
-    return run_dir / "outputs" / model / case / f"r{repeat}" / file_name
+    return run_dir / "outputs" / model / effort / case / f"r{repeat}" / file_name
 
 
 @dataclass(frozen=True)
 class TaskJob:
     model: str
+    effort: str
     case: EvalCase
     repeat: int
     task: str
@@ -141,10 +149,10 @@ def validated_cases(names, expected_root=EXPECTED_ROOT, resources_root=RESOURCES
     return cases
 
 
-def execute_task(runner, case, labels, repeat, task, variant=BASELINE_VARIANT):
+def execute_task(runner, case, labels, repeat, task, variant=BASELINE_VARIANT, effort=DEFAULT_EFFORT):
     if not task.has_input(case, labels):
         return None
-    tags = {"model": runner.model, "case": case.name, "repeat": repeat, "task": task.name,
+    tags = {"model": runner.model, "effort": effort, "case": case.name, "repeat": repeat, "task": task.name,
             "prompt": variant.name}
     first_call = len(runner.calls)
     variant_runner = VariantRunner(runner, task.agent, variant.agent_for(task.agent))
@@ -166,29 +174,31 @@ def record_task(run_dir, result):
                  {**tags, "status": result.status, "wall_seconds": result.wall_seconds, "calls": len(result.calls)})
     for call in result.calls:
         append_jsonl(run_dir / "calls.jsonl", {**tags, **asdict(call)})
-    LOGGER.info("[%s] %s r%d %s (%s): %s, %d calls, %.1fs", tags["model"], tags["case"], tags["repeat"],
-                tags["task"], tags["prompt"], result.status, len(result.calls), result.wall_seconds)
+    LOGGER.info("[%s · %s] %s r%d %s (%s): %s, %d calls, %.1fs", tags["model"], tags["effort"], tags["case"],
+                tags["repeat"], tags["task"], tags["prompt"], result.status, len(result.calls), result.wall_seconds)
 
 
-def run_task(run_dir, runner, case, labels, repeat, task, variant=BASELINE_VARIANT):
-    result = execute_task(runner, case, labels, repeat, task, variant)
+def run_task(run_dir, runner, case, labels, repeat, task, variant=BASELINE_VARIANT, effort=DEFAULT_EFFORT):
+    result = execute_task(runner, case, labels, repeat, task, variant, effort)
     if result:
         record_task(run_dir, result)
 
 
-def run_job(job, create_runner, effort):
-    runner = create_runner(job.model, effort)
-    return execute_task(runner, job.case, job.case.load_labels(), job.repeat, TASKS[job.task], job.variant)
+def run_job(job, create_runner):
+    runner = create_runner(job.model, effort_flag(job.effort))
+    return execute_task(runner, job.case, job.case.load_labels(), job.repeat, TASKS[job.task], job.variant,
+                        job.effort)
 
 
 def matrix_jobs(matrix, cases, variants):
     return [
-        TaskJob(model, case, repeat, task, variants[task][prompt])
+        TaskJob(model, effort, case, repeat, task, variants[task][prompt])
         for case in cases
         for repeat in range(1, matrix.repeats + 1)
         for task in matrix.tasks
         for prompt in matrix.prompts_for(task)
         for model in matrix.models
+        for effort in matrix.efforts
     ]
 
 
@@ -215,10 +225,10 @@ def run_matrix(matrix, run_dir, cases, create_runner=ClaudeRunner.create, prompt
     write_json(run_dir / "matrix.json", {**asdict(matrix), "metadata": run_metadata(matrix, variants)})
     # Fails on a missing CLI before any job starts.
     for model in matrix.models:
-        create_runner(model, matrix.effort)
+        for effort in matrix.efforts:
+            create_runner(model, effort_flag(effort))
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(run_job, job, create_runner, matrix.effort)
-                   for job in matrix_jobs(matrix, cases, variants)]
+        futures = [executor.submit(run_job, job, create_runner) for job in matrix_jobs(matrix, cases, variants)]
         for future in as_completed(futures):
             if result := future.result():
                 record_task(run_dir, result)

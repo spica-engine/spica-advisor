@@ -3,6 +3,7 @@ from pathlib import Path
 
 from evals.cases import EXPECTED_ROOT, RESOURCES_ROOT, find_cases
 from evals.harness import (
+    DEFAULT_EFFORT,
     DEFAULT_WORKERS,
     new_run_dir,
     resolve_matrix,
@@ -44,7 +45,8 @@ def parse_args():
     run.add_argument("--cases", nargs="+", metavar="CASE", help="overrides evals/matrix.yaml")
     run.add_argument("--tasks", nargs="+", metavar="TASK", help="overrides evals/matrix.yaml")
     run.add_argument("--repeats", type=int, help="overrides evals/matrix.yaml")
-    run.add_argument("--effort", choices=EFFORTS, help="overrides evals/matrix.yaml; Claude Code's default when unset")
+    run.add_argument("--effort", nargs="+", choices=(DEFAULT_EFFORT, *EFFORTS), metavar="EFFORT",
+                     help=f"efforts to compare, {DEFAULT_EFFORT} meaning Claude Code's own; overrides evals/matrix.yaml")
     run.add_argument("--workers", type=positive_int, default=DEFAULT_WORKERS,
                      help=f"agent tasks run at once (default {DEFAULT_WORKERS})")
     run.add_argument("--prompts", nargs="+", type=prompt_selection, metavar="TASK=VARIANT,...",
@@ -86,7 +88,7 @@ def run(args):
     configure_logging(debug=False, log_file=None, log_format="text")
     prompts = dict(args.prompts) if args.prompts else None
     matrix = resolve_matrix(models=args.models, cases=args.cases, repeats=args.repeats, tasks=args.tasks,
-                            prompts=prompts, effort=args.effort)
+                            prompts=prompts, efforts=args.effort)
     cases = validated_cases(matrix.cases)
     run_dir = new_run_dir()
     print(f"Writing results to {run_dir}")

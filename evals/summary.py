@@ -5,7 +5,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from evals.cases import EXPECTED_ROOT, RESOURCES_ROOT, find_cases
-from evals.harness import output_path
+from evals.harness import DEFAULT_EFFORT, output_path
 from evals.prompts import BASELINE
 from evals.scoring import SCORERS, merge_counts, ratio
 from evals.storage import read_json, read_jsonl, write_json
@@ -64,27 +64,39 @@ def compares_prompts(matrix):
     return any(names != [BASELINE] for names in (matrix.get("prompts") or {}).values())
 
 
-def series_name(model, prompt, by_prompt):
-    return f"{model} · {prompt}" if by_prompt else model
+def compares_efforts(matrix):
+    return len(matrix.get("efforts") or []) > 1
+
+
+def series_name(model, effort, prompt, by_effort, by_prompt):
+    return " · ".join([model, *([effort] if by_effort else []), *([prompt] if by_prompt else [])])
+
+
+def series_header(by_effort, by_prompt):
+    return " · ".join(["model", *(["effort"] if by_effort else []), *(["prompt"] if by_prompt else [])])
 
 
 def matrix_series(matrix):
-    by_prompt = compares_prompts(matrix)
+    by_effort, by_prompt = compares_efforts(matrix), compares_prompts(matrix)
     prompts = list(dict.fromkeys(
         prompt for task in matrix["tasks"] for prompt in (matrix.get("prompts") or {}).get(task, [BASELINE])
     ))
     return [
-        {"name": series_name(model, prompt, by_prompt), "model": model, "prompt": prompt}
+        {"name": series_name(model, effort, prompt, by_effort, by_prompt), "model": model, "effort": effort,
+         "prompt": prompt}
         for model in matrix["models"]
+        for effort in matrix.get("efforts") or [DEFAULT_EFFORT]
         for prompt in prompts
     ]
 
 
-def with_series(records, by_prompt):
+def with_series(records, by_effort, by_prompt):
     tagged = []
     for record in records:
         prompt = record.get("prompt", BASELINE)
-        tagged.append({**record, "prompt": prompt, "series": series_name(record["model"], prompt, by_prompt)})
+        effort = record.get("effort", DEFAULT_EFFORT)
+        tagged.append({**record, "prompt": prompt, "effort": effort,
+                       "series": series_name(record["model"], effort, prompt, by_effort, by_prompt)})
     return tagged
 
 
@@ -92,7 +104,7 @@ def scored_runs(run_dir, runs, labels):
     scored = []
     for run in runs:
         scorer = SCORERS[run["task"]]
-        output = read_json(output_path(run_dir, run["model"], run["case"], run["repeat"], run["task"], run["prompt"]))
+        output = read_json(output_path(run_dir, run["model"], run["case"], run["repeat"], run["task"], run["prompt"], run["effort"]))
         prediction = scorer.empty_prediction if output["prediction"] is None else output["prediction"]
         expected = labels[run["case"]][run["task"]]
         scored.append({**run, "counts": scorer.score(prediction, expected), "items": scorer.items(prediction, expected)})
@@ -135,7 +147,7 @@ USAGE_METRICS = list(usage_metrics([], []))
 
 def series_fields(runs):
     first = runs[0]
-    return {"series": first["series"], "model": first["model"], "prompt": first["prompt"]}
+    return {"series": first["series"], "model": first["model"], "effort": first["effort"], "prompt": first["prompt"]}
 
 
 def summary_rows(scored, calls):
@@ -202,11 +214,11 @@ def prompts_line(matrix):
 def render_markdown(run_name, matrix, rows, totals):
     overall = [row for row in rows if row["case"] == ALL_CASES]
     by_prompt = compares_prompts(matrix)
-    series_header = "model · prompt" if by_prompt else "model"
+    header = series_header(compares_efforts(matrix), by_prompt)
     lines = [
         f"# Eval summary: {run_name}",
         "",
-        f"Models: {', '.join(matrix['models'])} · Effort: {matrix.get('effort') or 'default'} · "
+        f"Models: {', '.join(matrix['models'])} · Efforts: {', '.join(matrix.get('efforts') or [DEFAULT_EFFORT])} · "
         f"Cases: {', '.join(matrix['cases'])} · Repeats: {matrix['repeats']}",
         *([prompts_line(matrix)] if by_prompt else []),
         "",
@@ -221,14 +233,14 @@ def render_markdown(run_name, matrix, rows, totals):
             continue
         metrics = [*SCORERS[task].metrics({}), "consistency"]
         lines += ["", f"### {task}", "", *table(
-            [series_header, *metrics],
+            [header, *metrics],
             [[row["series"], *(format_value(metric, row[metric]) for metric in metrics)] for row in task_rows],
         )]
 
     cases = sorted({row["case"] for row in rows} - {ALL_CASES})
     rows_by_case = {(row["series"], row["task"], row["case"]): row for row in rows}
     lines += ["", "## Primary metric per case", "", *table(
-        [series_header, "task", "metric", *cases],
+        [header, "task", "metric", *cases],
         [
             [row["series"], row["task"], SCORERS[row["task"]].primary_metric,
              *(primary_metric_cell(rows_by_case, row, case) for case in cases)]
@@ -237,13 +249,13 @@ def render_markdown(run_name, matrix, rows, totals):
     )]
 
     lines += ["", "## Cost, tokens and latency per run", "", *table(
-        [series_header, "task", *USAGE_METRICS],
+        [header, "task", *USAGE_METRICS],
         [[row["series"], row["task"], *(format_value(metric, row[metric]) for metric in USAGE_METRICS)] for row in overall],
     )]
 
     total_metrics = ["calls", "failed_calls", "total_cost", "llm_seconds"]
-    lines += ["", f"## Totals per {series_header}", "", *table(
-        [series_header, *total_metrics],
+    lines += ["", f"## Totals per {header}", "", *table(
+        [header, *total_metrics],
         [[row["series"], *(format_value(metric, row[metric]) for metric in total_metrics)] for row in totals],
     ), ""]
     return "\n".join(lines)
@@ -255,7 +267,8 @@ def benchmark_data(run_name, matrix, rows, totals):
         "matrix": {
             **{key: matrix[key] for key in ("models", "cases", "repeats", "tasks")},
             "prompts": matrix.get("prompts") or {},
-            "effort": matrix.get("effort"),
+            "efforts": matrix.get("efforts") or [DEFAULT_EFFORT],
+            "compares_efforts": compares_efforts(matrix),
             "compares_prompts": compares_prompts(matrix),
             "series": matrix_series(matrix),
         },
@@ -295,9 +308,9 @@ def write_csv(path, rows):
 
 def write_summary(run_dir, expected_root=EXPECTED_ROOT, resources_root=RESOURCES_ROOT):
     matrix = read_json(run_dir / "matrix.json")
-    by_prompt = compares_prompts(matrix)
-    runs = with_series(read_jsonl(run_dir / "runs.jsonl"), by_prompt)
-    calls = with_series(read_jsonl(run_dir / "calls.jsonl"), by_prompt)
+    by_effort, by_prompt = compares_efforts(matrix), compares_prompts(matrix)
+    runs = with_series(read_jsonl(run_dir / "runs.jsonl"), by_effort, by_prompt)
+    calls = with_series(read_jsonl(run_dir / "calls.jsonl"), by_effort, by_prompt)
     labels = {
         case.name: case.load_labels().model_dump()
         for case in find_cases(expected_root, resources_root, matrix["cases"])

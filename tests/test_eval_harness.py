@@ -189,7 +189,7 @@ def test_run_task_records_output_run_and_tagged_calls(tmp_path, case):
     assert output["status"] == "ok"
     assert output["prediction"][0]["policy_id"] == "policy-1"
     [run] = read_jsonl(run_dir / "runs.jsonl")
-    assert run == {"model": "claude-haiku-4-5", "case": "demo", "repeat": 2, "task": "policy_attachments",
+    assert run == {"model": "claude-haiku-4-5", "effort": "default", "case": "demo", "repeat": 2, "task": "policy_attachments",
                    "prompt": "baseline", "status": "ok", "wall_seconds": run["wall_seconds"], "calls": 1}
     [call] = read_jsonl(run_dir / "calls.jsonl")
     assert (call["case"], call["repeat"], call["task"], call["agent"]) == (
@@ -211,7 +211,7 @@ def test_run_task_records_failed_prediction(tmp_path, case):
 
 def test_matrix_run_produces_scored_summary(tmp_path, case):
     run_dir = tmp_path / "run"
-    matrix = Matrix(models=["claude-haiku-4-5"], cases=["demo"], repeats=2, tasks=list(TASKS), effort="high")
+    matrix = Matrix(models=["claude-haiku-4-5"], cases=["demo"], repeats=2, tasks=list(TASKS), efforts=["high"])
     efforts = []
 
     def create_runner(model, effort):
@@ -237,7 +237,8 @@ def test_matrix_run_produces_scored_summary(tmp_path, case):
 
     results = read_json(run_dir / "results.json")
     assert results["matrix"]["models"] == ["claude-haiku-4-5"]
-    assert results["matrix"]["effort"] == "high"
+    assert results["matrix"]["efforts"] == ["high"]
+    assert results["matrix"]["compares_efforts"] is False
     assert results["metadata"]["agents"]["bucket_acl"]["prompt_fingerprint"]
     assert results["tasks"]["sensitive_env_vars"]["primary_metric"] == "accuracy"
     assert "high_as_low" not in results["tasks"]["sensitive_env_vars"]["percent_metrics"]
@@ -377,17 +378,48 @@ def test_resolve_matrix_rejects_unknown_models(tmp_path):
         resolve_matrix(matrix_path)
 
 
+def test_matrix_compares_efforts_as_separate_series(tmp_path, case):
+    run_dir = tmp_path / "run"
+    matrix = Matrix(models=["claude-haiku-4-5"], cases=["demo"], repeats=1, tasks=["sensitive_env_vars"],
+                    efforts=["default", "high"])
+    flags = []
+
+    def create_runner(model, effort):
+        flags.append(effort)
+        return FakeRunner(model)
+
+    run_matrix(matrix, run_dir, [case], create_runner=create_runner)
+    write_summary(run_dir, expected_root=tmp_path / "expected", resources_root=tmp_path / "resources")
+
+    results = read_json(run_dir / "results.json")
+    assert [series["name"] for series in results["matrix"]["series"]] == [
+        "claude-haiku-4-5 · default", "claude-haiku-4-5 · high"]
+    assert {row["series"] for row in results["rows"]} == {"claude-haiku-4-5 · default", "claude-haiku-4-5 · high"}
+    assert sorted(flags, key=str) == [None, None, "high", "high"]
+    for effort in ("default", "high"):
+        assert read_json(output_path(run_dir, "claude-haiku-4-5", "demo", 1, "sensitive_env_vars", effort=effort))
+    assert "model · effort" in (run_dir / "summary.md").read_text()
+
+
 def test_resolve_matrix_rejects_unknown_effort(tmp_path):
     matrix_path = tmp_path / "matrix.yaml"
-    matrix_path.write_text("models: [claude-haiku-4-5]\ncases: [demo]\nrepeats: 1\ntasks: all\neffort: extreme\n")
+    matrix_path.write_text("models: [claude-haiku-4-5]\ncases: [demo]\nrepeats: 1\ntasks: all\nefforts: [extreme]\n")
 
-    with pytest.raises(ValueError, match="effort 'extreme'"):
+    with pytest.raises(ValueError, match="unknown \\['extreme'\\]"):
         resolve_matrix(matrix_path)
 
 
 def test_resolve_matrix_takes_effort_from_the_argument_over_the_file(tmp_path):
     matrix_path = tmp_path / "matrix.yaml"
-    matrix_path.write_text("models: [claude-haiku-4-5]\ncases: [demo]\nrepeats: 1\ntasks: all\neffort: low\n")
+    matrix_path.write_text("models: [claude-haiku-4-5]\ncases: [demo]\nrepeats: 1\ntasks: all\nefforts: [low]\n")
 
-    assert resolve_matrix(matrix_path, effort="max").effort == "max"
-    assert resolve_matrix(matrix_path).effort == "low"
+    assert resolve_matrix(matrix_path, efforts=["max", "high"]).efforts == ["max", "high"]
+    assert resolve_matrix(matrix_path).efforts == ["low"]
+
+
+def test_resolve_matrix_rejects_duplicate_efforts(tmp_path):
+    matrix_path = tmp_path / "matrix.yaml"
+    matrix_path.write_text("models: [claude-haiku-4-5]\ncases: [demo]\nrepeats: 1\ntasks: all\n")
+
+    with pytest.raises(ValueError, match="without duplicates"):
+        resolve_matrix(matrix_path, efforts=["low", "low"])
