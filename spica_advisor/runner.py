@@ -17,17 +17,29 @@ CLI = "claude"
 MODEL_ENV_VAR = "SPICA_ADVISOR_MODEL"
 EFFORT_ENV_VAR = "SPICA_ADVISOR_EFFORT"
 DEFAULT_MODEL = "claude-sonnet-5-5"
+KNOWN_MODELS = ("claude-haiku-4-5", "claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 MAX_TURNS = 10
 FILE_TOOLS = ("Grep", "Glob", "Read")
 STRUCTURED_OUTPUT_TOOL = "StructuredOutput"
 CALL_TIMEOUT_SECONDS = 900
+MAX_ATTEMPTS = 3
+RETRY_BACKOFF_SECONDS = 2
 # The CLI bills this key instead of the signed-in subscription whenever it is set.
 API_KEY_ENV_VAR = "ANTHROPIC_API_KEY"
 
 
 class ClaudeError(RuntimeError):
     pass
+
+
+RETRYABLE_ERRORS = (ClaudeError, subprocess.TimeoutExpired)
+
+
+def check_model(model):
+    if model not in KNOWN_MODELS:
+        raise ValueError(f"Unknown model {model!r} (choose from {', '.join(KNOWN_MODELS)})")
+    return model
 
 
 def require_cli():
@@ -99,8 +111,9 @@ class ClaudeRunner:
 
     @classmethod
     def create(cls, model=DEFAULT_MODEL, effort=None):
+        load_dotenv()
         require_cli()
-        return cls(model, effort)
+        return cls(check_model(model), effort)
 
     @classmethod
     def from_env(cls):
@@ -141,6 +154,22 @@ class ClaudeRunner:
             )
 
     def run(self, agent, prompt, functions=()):
+        LOGGER.debug("Claude call started for %s", agent.name, extra={"payload": {
+            "agent": agent.name,
+            "system_prompt": agent.instructions,
+            "prompt": prompt,
+        }})
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                return self._attempt(agent, prompt, functions)
+            except RETRYABLE_ERRORS as error:
+                if attempt == MAX_ATTEMPTS:
+                    raise
+                LOGGER.warning("Claude call for %s failed (attempt %d of %d): %s",
+                               agent.name, attempt, MAX_ATTEMPTS, error)
+                time.sleep(RETRY_BACKOFF_SECONDS * 2 ** (attempt - 1))
+
+    def _attempt(self, agent, prompt, functions):
         started = time.perf_counter()
         events = []
         try:
@@ -157,6 +186,7 @@ class ClaudeRunner:
         LOGGER.debug("Claude call finished for %s", agent.name, extra={"payload": {
             "agent": agent.name,
             "status": status,
-            "events": events,
+            "tool_calls": [{"name": tool_use["name"], "input": tool_use.get("input")} for tool_use in tool_uses(events)],
+            "result": result_event(events),
         }})
         self.calls.append(call_record(agent.name, self.model, status, time.perf_counter() - started, events))

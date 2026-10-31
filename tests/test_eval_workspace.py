@@ -1,6 +1,7 @@
 import pytest
 
 from evals.workspace import cases_page_data, export_cases, import_cases, render_cases_page
+from spica_advisor.runner import KNOWN_MODELS
 
 
 PUBLIC_FUNCTION = """\
@@ -154,7 +155,7 @@ def test_cases_page_embeds_models_defaults_and_costs(tmp_path):
 
     assert data["default_models"] == ["claude-sonnet-5-5"] and data["default_repeats"] == 2
     assert data["costs"] == {"claude-sonnet-5-5|bucket_acl|c1": 0.5}
-    assert data["models"] == ["claude-sonnet-5-5"]
+    assert data["models"] == list(KNOWN_MODELS)
     assert render_cases_page(results, template).startswith("<script>{")
 
 

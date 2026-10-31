@@ -369,6 +369,14 @@ def test_resolve_matrix_rejects_bad_prompt_selections(tmp_path, prompts_root, pr
         resolve_matrix(matrix_path, tasks=["unauthenticated_endpoints"], prompts=prompts, prompts_root=prompts_root)
 
 
+def test_resolve_matrix_rejects_unknown_models(tmp_path):
+    matrix_path = tmp_path / "matrix.yaml"
+    matrix_path.write_text("models: [claude-sonet-5-5]\ncases: [demo]\nrepeats: 1\ntasks: all\n")
+
+    with pytest.raises(ValueError, match="unknown models \\['claude-sonet-5-5'\\]"):
+        resolve_matrix(matrix_path)
+
+
 def test_resolve_matrix_rejects_unknown_effort(tmp_path):
     matrix_path = tmp_path / "matrix.yaml"
     matrix_path.write_text("models: [claude-haiku-4-5]\ncases: [demo]\nrepeats: 1\ntasks: all\neffort: extreme\n")

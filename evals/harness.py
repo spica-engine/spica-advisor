@@ -23,7 +23,7 @@ from evals.tasks import TASKS
 from evals.validation import check_case
 from spica_advisor.log import LOGGER
 from spica_advisor.metrics import OK_STATUS, CallRecord
-from spica_advisor.runner import EFFORTS, ClaudeRunner
+from spica_advisor.runner import EFFORTS, KNOWN_MODELS, ClaudeRunner
 
 
 MATRIX_PATH = Path("evals/matrix.yaml")
@@ -70,12 +70,13 @@ def resolve_matrix(path=MATRIX_PATH, models=None, cases=None, repeats=None, task
         prompts=prompts or defaults.get("prompts") or {},
         effort=effort or defaults.get("effort"),
     )
+    unknown_models = sorted(set(matrix.models) - set(KNOWN_MODELS))
     unknown_tasks = sorted(set(matrix.tasks) - set(TASKS))
     unknown_effort = matrix.effort is not None and matrix.effort not in EFFORTS
-    if not matrix.models or unknown_tasks or unknown_effort or matrix.repeats < 1:
+    if not matrix.models or unknown_models or unknown_tasks or unknown_effort or matrix.repeats < 1:
         raise ValueError(
-            f"invalid matrix: models {matrix.models}, unknown tasks {unknown_tasks}, effort {matrix.effort!r}, "
-            f"repeats {matrix.repeats}"
+            f"invalid matrix: models {matrix.models}, unknown models {unknown_models}, "
+            f"unknown tasks {unknown_tasks}, effort {matrix.effort!r}, repeats {matrix.repeats}"
         )
     problems = prompt_problems(matrix.prompts, matrix.tasks, prompts_root)
     if problems:

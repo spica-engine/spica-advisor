@@ -7,7 +7,7 @@ from pydantic import BaseModel, ValidationError
 
 from spica_advisor import runner as runner_module
 from spica_advisor.agent import Agent
-from spica_advisor.runner import DEFAULT_MODEL, MAX_TURNS, ClaudeError, ClaudeRunner
+from spica_advisor.runner import DEFAULT_MODEL, KNOWN_MODELS, MAX_ATTEMPTS, MAX_TURNS, ClaudeError, ClaudeRunner
 
 
 class Answer(BaseModel):
@@ -62,7 +62,8 @@ class FakeSubprocess:
         self.workspace_files = {path.name: path.read_text() for path in Path(kwargs["cwd"]).iterdir()}
         if self.error:
             raise self.error
-        return SimpleNamespace(stdout=self.stdout, stderr=self.stderr, returncode=0)
+        stdout = self.stdout.pop(0) if isinstance(self.stdout, list) else self.stdout
+        return SimpleNamespace(stdout=stdout, stderr=self.stderr, returncode=0)
 
 
 @pytest.fixture
@@ -72,6 +73,13 @@ def fake_subprocess(monkeypatch):
         monkeypatch.setattr(runner_module.subprocess, "run", fake)
         return fake
     return install
+
+
+@pytest.fixture(autouse=True)
+def no_backoff(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(runner_module.time, "sleep", sleeps.append)
+    return sleeps
 
 
 @pytest.fixture
@@ -162,9 +170,8 @@ def test_error_result_raises_and_records_usage(fake_subprocess):
     with pytest.raises(ClaudeError, match="error_max_turns"):
         runner.run(AGENT, "prompt")
 
-    [call] = runner.calls
-    assert call.status == "ClaudeError"
-    assert (call.requests, call.input_tokens) == (3, 126)
+    assert len(runner.calls) == MAX_ATTEMPTS
+    assert all(call.status == "ClaudeError" and (call.requests, call.input_tokens) == (3, 126) for call in runner.calls)
 
 
 def test_missing_result_raises_with_stderr(fake_subprocess):
@@ -174,8 +181,8 @@ def test_missing_result_raises_with_stderr(fake_subprocess):
     with pytest.raises(ClaudeError, match="Not logged in"):
         runner.run(AGENT, "prompt")
 
-    [call] = runner.calls
-    assert (call.status, call.requests, call.input_tokens, call.cost_usd) == ("ClaudeError", 0, 0, None)
+    assert all((call.status, call.requests, call.input_tokens, call.cost_usd) == ("ClaudeError", 0, 0, None)
+               for call in runner.calls)
 
 
 def test_output_that_breaks_the_schema_raises(fake_subprocess):
@@ -188,21 +195,66 @@ def test_output_that_breaks_the_schema_raises(fake_subprocess):
     assert runner.calls[0].status == "ValidationError"
 
 
-def test_timeout_is_recorded_and_reraised(fake_subprocess):
-    fake_subprocess(error=TimeoutError("timed out"))
+def test_failed_attempts_are_retried_with_backoff_and_each_is_recorded(fake_subprocess, no_backoff):
+    fake_subprocess(stdout="not json\n", stderr="Overloaded")
     runner = ClaudeRunner()
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(ClaudeError, match="Overloaded"):
         runner.run(AGENT, "prompt")
 
-    assert runner.calls[0].status == "TimeoutError"
+    assert [call.status for call in runner.calls] == ["ClaudeError"] * MAX_ATTEMPTS
+    assert no_backoff == [2, 4]
+
+
+def test_a_retry_that_succeeds_returns_its_output(fake_subprocess):
+    fake_subprocess(stdout=["not json\n", stream(result({"label": "pos"}))])
+    runner = ClaudeRunner()
+
+    assert runner.run(AGENT, "prompt") == Answer(label="pos")
+    assert [call.status for call in runner.calls] == ["ClaudeError", "ok"]
+
+
+def test_timeout_is_retried_then_reraised(fake_subprocess):
+    fake_subprocess(error=runner_module.subprocess.TimeoutExpired("claude", 900))
+    runner = ClaudeRunner()
+
+    with pytest.raises(runner_module.subprocess.TimeoutExpired):
+        runner.run(AGENT, "prompt")
+
+    assert [call.status for call in runner.calls] == ["TimeoutExpired"] * MAX_ATTEMPTS
+
+
+def test_schema_violations_are_not_retried(fake_subprocess):
+    fake_subprocess(stdout=stream(result({"wrong": "field"})))
+    runner = ClaudeRunner()
+
+    with pytest.raises(ValidationError):
+        runner.run(AGENT, "prompt")
+
+    assert len(runner.calls) == 1
 
 
 def test_create_requires_the_cli(monkeypatch):
+    monkeypatch.setattr(runner_module, "load_dotenv", lambda: None)
     monkeypatch.setattr(runner_module.shutil, "which", lambda name: None)
 
     with pytest.raises(RuntimeError, match="Claude Code"):
         ClaudeRunner.create()
+
+
+def test_create_rejects_unknown_models(cli_installed):
+    with pytest.raises(ValueError, match="Unknown model 'claude-sonet-5-5'"):
+        ClaudeRunner.create("claude-sonet-5-5")
+
+
+def test_create_loads_dotenv_before_checking_the_cli(monkeypatch, cli_installed):
+    loaded = []
+    monkeypatch.setattr(runner_module, "load_dotenv", lambda: loaded.append(True))
+
+    ClaudeRunner.create("claude-haiku-4-5")
+
+    assert loaded == [True]
+    assert DEFAULT_MODEL in KNOWN_MODELS
 
 
 def test_from_env_reads_model_and_effort(monkeypatch, cli_installed):
