@@ -31,8 +31,10 @@ class CallRecord:
 
 
 def totals(calls):
+    costs = [call.cost_usd for call in calls if call.cost_usd is not None]
     return {
         "calls": len(calls),
         "failed_calls": sum(call.status != OK_STATUS for call in calls),
         **{name: round(sum(getattr(call, name) for call in calls), 3) for name in SUMMED_FIELDS},
+        "cost_usd": round(sum(costs), 6) if costs else None,
     }

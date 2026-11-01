@@ -81,10 +81,14 @@ def run_investigation(investigation, context, output_dir):
     return context.report
 
 
+def format_cost(cost_usd):
+    return "n/a" if cost_usd is None else f"${cost_usd:.4f}"
+
+
 def log_totals(investigation_name, usage):
     LOGGER.info(
         "[%s] %d LLM calls (%d failed), %d requests, %d input tokens (%d cached), "
-        "%d output tokens (%d reasoning), %.1fs waiting on LLM",
+        "%d output tokens (%d reasoning), %.1fs waiting on LLM, estimated cost %s",
         investigation_name,
         usage["calls"],
         usage["failed_calls"],
@@ -94,6 +98,7 @@ def log_totals(investigation_name, usage):
         usage["output_tokens"],
         usage["reasoning_tokens"],
         usage["wall_seconds"],
+        format_cost(usage["cost_usd"]),
     )
 
 
@@ -111,6 +116,7 @@ def run_investigations(investigations, runner, project_dir, output_dir):
             LOGGER.exception("Investigation %s failed", investigation.name)
             reports[investigation.name] = Failure()
         log_totals(investigation.name, totals(runner.calls[first_call:]))
+    log_totals("total", totals(runner.calls))
     return reports
 
 
