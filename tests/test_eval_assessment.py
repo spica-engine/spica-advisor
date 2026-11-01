@@ -115,15 +115,15 @@ class FakeRunner:
         return next(self.responses)
 
 
-def test_prediction_runs_one_call_per_public_function_and_maps_file_names_back(tmp_path):
+def test_prediction_runs_one_call_per_public_function_with_the_code_in_the_prompt(tmp_path):
     case = EvalCase("demo", tmp_path / "resources" / "demo", tmp_path / "expected" / "demo")
     write(case, "function/Signup/schema.yaml",
           "_id: fn-1\nname: Signup\ntriggers:\n  create:\n    type: http\n    active: true\n    options: {}\n")
     write(case, "function/Signup/index.mjs", "export function create(req, res) {}\n")
     runner = FakeRunner([EndpointAssessmentResponse(
-        functions=[FunctionAssessment(function_id="fn-1.js", handlers=[
+        functions=[FunctionAssessment(function_id="fn-1", handlers=[
             HandlerAssessment(name="create", auth_reason="r", auth="none", impact_reason="r", impact="high")])],
-        skipped=[SkippedHandler(function_id="fn-1.js", name="login", reason="sign-in")],
+        skipped=[SkippedHandler(function_id="fn-1", name="login", reason="sign-in")],
     )])
 
     result = predict_endpoint_assessment(case, None, runner)
@@ -131,7 +131,8 @@ def test_prediction_runs_one_call_per_public_function_and_maps_file_names_back(t
     [(agent, prompt, functions)] = runner.calls
     assert agent is ENDPOINT_ASSESSMENT_AGENT
     assert "function_id: fn-1" in prompt and "http_handlers: create" in prompt
-    assert [function["_id"] for function in functions] == ["fn-1"]
+    assert "export function create(req, res) {}" in prompt
+    assert functions == ()
     assert result["functions"][0]["function_id"] == "fn-1"
     assert result["skipped"][0]["function_id"] == "fn-1"
 

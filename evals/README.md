@@ -90,8 +90,8 @@ same rule: only `evals/expected/synthetic-*/` is committed, because real labels 
 | `policy-attachments.yaml` | Policy attachment finder, given every function's source | list of `{function_id, policy_id, policy_name}` | `function_id` (where the policy is attached) must exist; set `policy_id` for a hardcoded id and/or `policy_name` for the env var name when it comes from `process.env` |
 | `bucket-acl.yaml` | Bucket ACL evaluator, given one bucket schema at a time | `<bucket _id>: {includes_sensitive_information, read, write}` with `read`/`write` in `applied \| applied_but_in_risk \| not_applied` | Any existing buckets you want scored |
 
-`endpoint-assessment.yaml` belongs to the `endpoint_assessment` task, the endpoint agent, which is given one public
-function at a time and can read every function as a file. It labels two independent axes per public handler, and code turns
+`endpoint-assessment.yaml` belongs to the `endpoint_assessment` task, the endpoint agent, which is given a
+batch of public functions at a time, with the code their handlers can run (cut by `spica_advisor/code_slice`) in the prompt. It labels two independent axes per public handler, and code turns
 the pair into a report severity (`report_decision` in `spica_advisor/investigations/unauthenticated_endpoints/policy.py`):
 
 ```

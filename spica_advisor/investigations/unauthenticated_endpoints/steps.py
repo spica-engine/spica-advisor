@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 
-from spica_advisor.function_files import restore_function_ids
+from spica_advisor.code_slice import CodeIndex
 from spica_advisor.investigations.unauthenticated_endpoints.agents import ENDPOINT_ASSESSMENT_AGENT
+from spica_advisor.investigations.unauthenticated_endpoints.batches import Packer
 from spica_advisor.investigations.unauthenticated_endpoints.context import UnauthenticatedEndpointsContext
 from spica_advisor.investigations.unauthenticated_endpoints.handlers import has_public_endpoint, served_handler_names
 from spica_advisor.investigations.unauthenticated_endpoints.policy import NOT_REPORTED, report_decision
-from spica_advisor.investigations.unauthenticated_endpoints.prompts import handler_call_prompt
 from spica_advisor.log import LOGGER
 from spica_advisor.resources import load_functions, resource_locations
 
@@ -30,6 +30,7 @@ def find_public_functions(context: UnauthenticatedEndpointsContext):
 
 
 def prepare_for_analysis(context: UnauthenticatedEndpointsContext):
+    context.code_index = CodeIndex(context.functions)
     context.analysis_inputs = []
     for function in context.public_functions:
         handlers = served_handler_names(function)
@@ -43,8 +44,9 @@ def prepare_for_analysis(context: UnauthenticatedEndpointsContext):
 
 
 def endpoint_calls(context: UnauthenticatedEndpointsContext):
-    # Every function is a file, so the agent can follow a handler into helpers that have no public endpoint.
-    return [EndpointCall(handler_call_prompt(function), tuple(context.functions)) for function in context.analysis_inputs]
+    if not context.analysis_inputs:
+        return []
+    return [EndpointCall(prompt) for prompt in Packer(context.code_index, context.analysis_inputs).pack(context.analysis_inputs)]
 
 
 def analyze_endpoints(context: UnauthenticatedEndpointsContext, build_calls=endpoint_calls):
@@ -53,7 +55,6 @@ def analyze_endpoints(context: UnauthenticatedEndpointsContext, build_calls=endp
         LOGGER.info("Analyzing %d functions in %d calls", len(context.analysis_inputs), len(calls))
     for call in calls:
         response = context.runner.run(ENDPOINT_ASSESSMENT_AGENT, call.prompt, functions=call.functions)
-        restore_function_ids([*response.functions, *response.skipped], context.functions)
         context.assessments.extend(response.functions)
         context.skipped_handlers.extend(response.skipped)
 
