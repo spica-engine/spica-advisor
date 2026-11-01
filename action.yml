@@ -12,8 +12,8 @@ inputs:
     description: Claude model to run. Uses claude-sonnet-5-5 when empty.
     default: ""
   effort:
-    description: Claude Code effort level (low, medium, high, xhigh, max). Uses Claude Code's default when empty.
-    default: ""
+    description: Claude Code effort level (low, medium, high, xhigh, max). The investigations make small judgments, so low is enough.
+    default: low
   project-dir:
     description: Directory holding the Spica resources, relative to the repository root.
     default: .

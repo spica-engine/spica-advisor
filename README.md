@@ -43,7 +43,7 @@ Create the token once with `claude setup-token` and store it as the `CLAUDE_CODE
 | --- | --- | --- |
 | `claude-code-oauth-token` | | Required. Token from `claude setup-token` |
 | `model` | `claude-sonnet-5-5` | Claude model to run, one of `KNOWN_MODELS` in `spica_advisor/runner.py` |
-| `effort` | Claude Code's default | `low`, `medium`, `high`, `xhigh` or `max` |
+| `effort` | `low` | `low`, `medium`, `high`, `xhigh` or `max` |
 | `project-dir` | `.` | Directory holding the Spica resources |
 | `output-dir` | `output` | Directory for the JSON and Markdown reports |
 | `investigations` | all | Comma-separated subset to run |
