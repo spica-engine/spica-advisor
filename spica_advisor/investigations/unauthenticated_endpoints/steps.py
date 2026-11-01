@@ -62,7 +62,14 @@ def reported_method(handler):
     severity = report_decision(handler.auth, handler.impact)
     if severity == NOT_REPORTED:
         return None
-    return {"name": handler.name, "risk_level": severity, "reason": f"{handler.auth_reason}; {handler.impact_reason}"}
+    return {
+        "name": handler.name,
+        "severity": severity,
+        "auth": handler.auth,
+        "auth_reason": handler.auth_reason,
+        "impact": handler.impact,
+        "impact_reason": handler.impact_reason,
+    }
 
 
 def function_report(assessment, location, handler_names):

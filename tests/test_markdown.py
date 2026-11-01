@@ -14,7 +14,8 @@ ENV_REPORT = [
 ]
 ENDPOINT_REPORT = [
     {"function_id": "f1", "function_name": "Login", "path": "function/Login", "methods": [
-        {"name": "resetPassword", "risk_level": "high", "reason": "updates users without auth"},
+        {"name": "resetPassword", "severity": "high", "auth": "none", "auth_reason": "no check",
+         "impact": "high", "impact_reason": "updates users | without auth"},
     ]},
 ]
 ACCESS_REPORT = [
@@ -58,7 +59,7 @@ def test_report_links_resources_to_the_scanned_commit():
     assert "Commit [`a1b2c3d`](https://github.com/o/r/commit/a1b2c3d4e5)" in report.text
     assert "[Workflow run](https://github.com/o/r/actions/runs/7)" in report.text
     assert ("| 🔴 High | [Login](https://github.com/o/r/tree/a1b2c3d4e5/spica/function/Login) "
-            "| `resetPassword` | updates users without auth |") in report.text
+            "| `resetPassword` | None: no check | High: updates users \\| without auth |") in report.text
 
 
 def test_report_shows_paths_when_not_on_github():
@@ -111,7 +112,7 @@ def test_failed_investigation_is_not_reported_as_clean():
     assert not report.complete
     assert report.finding_count == 0
     assert "No findings.\n\n| Investigation" not in report.text
-    assert "| Unauthenticated endpoints | ⚠️ Failed | – | – |" in report.text
+    assert "| Endpoints without full access control | ⚠️ Failed | – | – |" in report.text
     assert "This investigation failed" in report.text
 
 

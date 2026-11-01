@@ -11,6 +11,7 @@ from spica_advisor.investigations.unauthenticated_endpoints.models import (
     HandlerAssessment,
     SkippedHandler,
 )
+from spica_advisor.investigations.unauthenticated_endpoints.policy import SEVERITY_MATRIX
 
 
 def write_function(root, project, function_id, triggers, content):
@@ -155,9 +156,14 @@ def test_reports_a_severity_decided_by_the_policy_for_served_handlers_grouped_by
             "function_name": "fn-1",
             "path": "function/fn-1",
             "methods": [
-                {"name": "handler", "risk_level": "high", "reason": "no check; writes bucket"},
-                {"name": "health", "risk_level": "low", "reason": "no check; returns OK"},
-                {"name": "confirm", "risk_level": "low", "reason": "token only; writes bucket"},
+                {"name": "handler", "severity": "high", "auth": "none", "auth_reason": "no check",
+                 "impact": "high", "impact_reason": "writes bucket"},
+                {"name": "health", "severity": "low", "auth": "none", "auth_reason": "no check",
+                 "impact": "low", "impact_reason": "returns OK"},
+                {"name": "confirm", "severity": "medium", "auth": "authentication", "auth_reason": "token only",
+                 "impact": "high", "impact_reason": "writes bucket"},
+                {"name": "update", "severity": "low", "auth": "authentication", "auth_reason": "no check",
+                 "impact": "medium", "impact_reason": "writes bucket"},
             ],
         },
     ]
@@ -253,3 +259,11 @@ def test_file_names_in_the_answer_are_mapped_back_to_function_ids(tmp_path):
 
     assert [item.function_id for item in context.assessments] == ["fn-1"]
     assert [item.function_id for item in context.skipped_handlers] == ["fn-1"]
+
+
+def test_severity_matrix_maps_every_auth_and_impact_pair():
+    assert SEVERITY_MATRIX == {
+        "none": {"low": "low", "medium": "medium", "high": "high"},
+        "authentication": {"low": "none", "medium": "low", "high": "medium"},
+        "authorization": {"low": "none", "medium": "none", "high": "none"},
+    }
