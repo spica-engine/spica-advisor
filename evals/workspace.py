@@ -25,8 +25,9 @@ REAL = "real"
 SYNTHETIC = "synthetic"
 LABEL_HELP = {
     "sensitive-env-vars.yaml": "Every env var key in the case: KEY: low | medium | high",
-    "unauthenticated-endpoints.yaml": "Every function with a public http trigger, by _id: the handlers with no auth check "
-                                      "in the code, each low | medium | high. Use {} when every handler checks auth.",
+    "endpoint-assessment.yaml": "handlers: public handlers by function _id, each {auth: none | authentication | "
+                                "authorization, impact: low | medium | high}. skipped: sign-in, registration and "
+                                "password-reset handlers by function _id. Use {} for no labels.",
     "policy-attachments.yaml": "A list of places code gives users a policy: function_id where it happens, plus policy_id "
                                "for a hardcoded id and/or policy_name for the env var name it reads.",
     "bucket-acl.yaml": "Any buckets to score, by _id: includes_sensitive_information (true/false), read and write "

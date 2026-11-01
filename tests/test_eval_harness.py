@@ -28,8 +28,13 @@ from spica_advisor.investigations.broken_access_control.models import (
 )
 from spica_advisor.investigations.sensitive_env_vars.agents import SENSITIVENESS_AGENT
 from spica_advisor.investigations.sensitive_env_vars.models import EnvVarSensitiveness, SensitivenessResponse
-from spica_advisor.investigations.unauthenticated_endpoints.agents import ENDPOINT_RISK_AGENT
-from spica_advisor.investigations.unauthenticated_endpoints.models import FunctionRisk, FunctionRiskResponse, MethodRisk
+from spica_advisor.investigations.unauthenticated_endpoints.agents import ENDPOINT_ASSESSMENT_AGENT
+from spica_advisor.investigations.unauthenticated_endpoints.models import (
+    EndpointAssessmentResponse,
+    FunctionAssessment,
+    HandlerAssessment,
+)
+from spica_advisor.investigations.unauthenticated_endpoints.steps import EndpointCall
 from spica_advisor.metrics import CallRecord
 
 
@@ -57,7 +62,7 @@ triggers:
 
 LABELS = {
     "sensitive-env-vars.yaml": "API_KEY: high\nLOG_LEVEL: low\n",
-    "unauthenticated-endpoints.yaml": "fn-public:\n  create: high\n",
+    "endpoint-assessment.yaml": "handlers:\n  fn-public:\n    create: {auth: none, impact: high}\n",
     "policy-attachments.yaml": "- function_id: fn-private\n  policy_id: policy-1\n",
     "bucket-acl.yaml": (
         "bucket-1:\n  includes_sensitive_information: true\n  read: applied\n  write: not_applied\n"
@@ -97,9 +102,11 @@ RESPONSES = {
         EnvVarSensitiveness(name="API_KEY", sensitiveness_level="high", reason="r"),
         EnvVarSensitiveness(name="LOG_LEVEL", sensitiveness_level="medium", reason="r"),
     ]),
-    ENDPOINT_RISK_AGENT.name: FunctionRiskResponse(functions=[
-        FunctionRisk(function_id="fn-public", methods=[MethodRisk(name="create", risk_level="high", reason="r")]),
-    ]),
+    ENDPOINT_ASSESSMENT_AGENT.name: EndpointAssessmentResponse(functions=[
+        FunctionAssessment(function_id="fn-public", handlers=[
+            HandlerAssessment(name="create", auth_reason="r", auth="none", impact_reason="r", impact="high"),
+        ]),
+    ], skipped=[]),
     POLICY_ATTACHMENT_AGENT.name: ReportResponse(reports=[Report(
         attachment=CodeLocation(function_id="fn-private", match="attach"),
         definition=CodeLocation(function_id="fn-private", match="const"),
@@ -118,11 +125,13 @@ class FakeRunner:
         self.calls = []
         self.prompts = []
         self.agents = []
+        self.functions = []
         self.failing_prompts = failing_prompts
 
     def run(self, agent, prompt, functions=()):
         self.prompts.append((agent.name, prompt))
         self.agents.append(agent)
+        self.functions.append(functions)
         failed = any(marker in prompt for marker in self.failing_prompts)
         self.calls.append(CallRecord(
             agent=agent.name, model=self.model, status="ModelBehaviorError" if failed else "ok",
@@ -141,13 +150,16 @@ def prompts_for(runner, agent):
 def test_endpoint_task_sends_only_public_function_source(case):
     runner = FakeRunner()
 
-    prediction = TASKS["unauthenticated_endpoints"].predict(case, case.load_labels(), runner)
+    prediction = TASKS["endpoint_assessment"].predict(case, case.load_labels(), runner)
 
-    [prompt] = prompts_for(runner, ENDPOINT_RISK_AGENT)
-    assert "// public source" in prompt and "// private source" not in prompt
-    assert prediction == [{"function_id": "fn-public", "methods": [
-        {"name": "create", "risk_level": "high", "reason": "r"},
-    ]}]
+    [prompt] = prompts_for(runner, ENDPOINT_ASSESSMENT_AGENT)
+    assert "function_id: fn-public" in prompt and "fn-private" not in prompt
+    assert prediction == {
+        "functions": [{"function_id": "fn-public", "handlers": [
+            {"name": "create", "auth_reason": "r", "auth": "none", "impact_reason": "r", "impact": "high"},
+        ]}],
+        "skipped": [],
+    }
 
 
 def test_env_var_task_sends_names_without_values(case):
@@ -282,11 +294,12 @@ def test_new_run_dirs_never_collide(tmp_path):
 
 
 @pytest.fixture
-def prompts_root(tmp_path):
-    folder = tmp_path / "prompts" / "unauthenticated_endpoints"
+def prompts_root(tmp_path, monkeypatch):
+    monkeypatch.setitem(TASKS["endpoint_assessment"].inputs, "custom", lambda context: [EndpointCall("custom input")])
+    folder = tmp_path / "prompts" / "endpoint_assessment"
     folder.mkdir(parents=True)
     (folder / "strict.yaml").write_text(
-        "description: Stricter.\ninput: source-only\ninstructions: Only the listed handlers.\n", encoding="utf-8",
+        "description: Stricter.\ninput: custom\ninstructions: Only the listed handlers.\n", encoding="utf-8",
     )
     return tmp_path / "prompts"
 
@@ -294,16 +307,14 @@ def prompts_root(tmp_path):
 def test_variant_run_swaps_instructions_and_input_and_tags_the_prompt(tmp_path, case, prompts_root):
     run_dir = tmp_path / "run"
     runner = FakeRunner()
-    variant = load_variants("unauthenticated_endpoints", prompts_root)["strict"]
+    variant = load_variants("endpoint_assessment", prompts_root)["strict"]
 
-    run_task(run_dir, runner, case, case.load_labels(), 1, TASKS["unauthenticated_endpoints"], variant)
+    run_task(run_dir, runner, case, case.load_labels(), 1, TASKS["endpoint_assessment"], variant)
 
     [agent] = runner.agents
     assert agent.instructions == "Only the listed handlers."
-    [prompt] = prompts_for(runner, ENDPOINT_RISK_AGENT)
-    assert "http_handlers" not in prompt
-    assert "export function create(req, res)" in prompt
-    assert read_json(output_path(run_dir, "claude-haiku-4-5", "demo", 1, "unauthenticated_endpoints", "strict"))
+    assert prompts_for(runner, ENDPOINT_ASSESSMENT_AGENT) == ["custom input"]
+    assert read_json(output_path(run_dir, "claude-haiku-4-5", "demo", 1, "endpoint_assessment", "strict"))
     [run] = read_jsonl(run_dir / "runs.jsonl")
     [call] = read_jsonl(run_dir / "calls.jsonl")
     assert run["prompt"] == call["prompt"] == "strict"
@@ -311,10 +322,10 @@ def test_variant_run_swaps_instructions_and_input_and_tags_the_prompt(tmp_path, 
 
 def test_variant_runner_only_replaces_its_own_agent():
     runner = FakeRunner()
-    replacement = replace(ENDPOINT_RISK_AGENT, instructions="Only the listed handlers.")
-    variant_runner = VariantRunner(runner, ENDPOINT_RISK_AGENT, replacement)
+    replacement = replace(ENDPOINT_ASSESSMENT_AGENT, instructions="Only the listed handlers.")
+    variant_runner = VariantRunner(runner, ENDPOINT_ASSESSMENT_AGENT, replacement)
 
-    variant_runner.run(ENDPOINT_RISK_AGENT, "endpoints")
+    variant_runner.run(ENDPOINT_ASSESSMENT_AGENT, "endpoints")
     variant_runner.run(SENSITIVENESS_AGENT, "Environment variables")
 
     assert runner.agents == [replacement, SENSITIVENESS_AGENT]
@@ -323,8 +334,8 @@ def test_variant_runner_only_replaces_its_own_agent():
 def test_prompt_matrix_reports_one_series_per_model_and_prompt(tmp_path, case, prompts_root):
     run_dir = tmp_path / "run"
     matrix = Matrix(models=["claude-haiku-4-5"], cases=["demo"], repeats=1,
-                    tasks=["unauthenticated_endpoints", "sensitive_env_vars"],
-                    prompts={"unauthenticated_endpoints": ["baseline", "strict"]})
+                    tasks=["endpoint_assessment", "sensitive_env_vars"],
+                    prompts={"endpoint_assessment": ["baseline", "strict"]})
 
     run_matrix(matrix, run_dir, [case], create_runner=lambda model, effort: FakeRunner(model),
                prompts_root=prompts_root)
@@ -336,12 +347,12 @@ def test_prompt_matrix_reports_one_series_per_model_and_prompt(tmp_path, case, p
     ]
     overall = {(row["series"], row["task"]) for row in results["rows"] if row["case"] == "all"}
     assert overall == {
-        ("claude-haiku-4-5 · baseline", "unauthenticated_endpoints"),
-        ("claude-haiku-4-5 · strict", "unauthenticated_endpoints"),
+        ("claude-haiku-4-5 · baseline", "endpoint_assessment"),
+        ("claude-haiku-4-5 · strict", "endpoint_assessment"),
         ("claude-haiku-4-5 · baseline", "sensitive_env_vars"),
     }
-    prompts = results["metadata"]["agents"]["unauthenticated_endpoints"]["prompts"]
-    assert prompts["strict"]["input"] == "source-only"
+    prompts = results["metadata"]["agents"]["endpoint_assessment"]["prompts"]
+    assert prompts["strict"]["input"] == "custom"
     assert "+Only the listed handlers." in prompts["strict"]["diff"]
     assert "model · prompt" in (run_dir / "summary.md").read_text()
 
@@ -359,16 +370,16 @@ def test_model_matrix_keeps_model_names_as_series(tmp_path, case):
 
 
 @pytest.mark.parametrize(("prompts", "problem"), [
-    ({"unauthenticated_endpoints": ["missing"]}, "unknown prompt unauthenticated_endpoints:missing"),
+    ({"endpoint_assessment": ["missing"]}, "unknown prompt endpoint_assessment:missing"),
     ({"bucket_acl": ["baseline"]}, "not in the run"),
-    ({"unauthenticated_endpoints": ["strict", "strict"]}, "without duplicates"),
+    ({"endpoint_assessment": ["strict", "strict"]}, "without duplicates"),
 ])
 def test_resolve_matrix_rejects_bad_prompt_selections(tmp_path, prompts_root, prompts, problem):
     matrix_path = tmp_path / "matrix.yaml"
     matrix_path.write_text("models: [claude-haiku-4-5]\ncases: [demo]\nrepeats: 1\ntasks: all\n")
 
     with pytest.raises(ValueError, match=problem):
-        resolve_matrix(matrix_path, tasks=["unauthenticated_endpoints"], prompts=prompts, prompts_root=prompts_root)
+        resolve_matrix(matrix_path, tasks=["endpoint_assessment"], prompts=prompts, prompts_root=prompts_root)
 
 
 def test_resolve_matrix_rejects_unknown_models(tmp_path):

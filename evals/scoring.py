@@ -2,8 +2,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from evals.assessment import NOT_REPORTED, report_decision
 from spica_advisor.investigations.broken_access_control.steps import clean
+from spica_advisor.investigations.unauthenticated_endpoints.policy import NOT_REPORTED, report_decision
 
 
 MISSING = "missing"
@@ -107,45 +107,6 @@ def sensitive_env_var_metrics(counts):
 
 def sensitive_env_var_items(prediction, expected):
     return {name: prediction.get(name, {}).get("sensitiveness_level", MISSING) for name in expected}
-
-
-def endpoint_pairs(prediction):
-    return {
-        (function_risk["function_id"], method["name"]): method["risk_level"]
-        for function_risk in prediction
-        for method in function_risk["methods"]
-    }
-
-
-def expected_endpoint_pairs(expected):
-    return {(function_id, method): risk for function_id, methods in expected.items() for method, risk in methods.items()}
-
-
-def score_unauthenticated_endpoints(prediction, expected):
-    expected_pairs = expected_endpoint_pairs(expected)
-    predicted_pairs = endpoint_pairs(prediction)
-    found = expected_pairs.keys() & predicted_pairs.keys()
-    return {
-        "true_positives": len(found),
-        "false_positives": len(predicted_pairs.keys() - expected_pairs.keys()),
-        "false_negatives": len(expected_pairs.keys() - predicted_pairs.keys()),
-        "risk": confusion((expected_pairs[pair], predicted_pairs[pair]) for pair in found),
-        "unknown_functions": len({function_risk["function_id"] for function_risk in prediction} - expected.keys()),
-    }
-
-
-def unauthenticated_endpoint_metrics(counts):
-    return {
-        **detection(counts.get("true_positives", 0), counts.get("false_positives", 0), counts.get("false_negatives", 0)),
-        "risk_accuracy": accuracy(counts.get("risk", {})),
-        "unknown_functions": counts.get("unknown_functions", 0),
-    }
-
-
-def unauthenticated_endpoint_items(prediction, expected):
-    predicted_pairs = endpoint_pairs(prediction)
-    return {f"{function_id}.{method}": predicted_pairs.get((function_id, method), MISSING)
-            for function_id, method in expected_endpoint_pairs(expected)}
 
 
 SKIPPED = "skipped"
@@ -322,20 +283,6 @@ SCORERS = {
             "unexpected_names": "Env var names the model mentioned that do not exist in the project.",
         },
         {}, score_sensitive_env_vars, sensitive_env_var_metrics, sensitive_env_var_items, "accuracy",
-    ),
-    "unauthenticated_endpoints": Scorer(
-        "Finds public handlers without an auth check and rates their risk. Scored per function and handler pair.",
-        {
-            "precision": "When the model reports an unprotected endpoint, how often it really is one. "
-                         "Low means false alarms for reviewers.",
-            "recall": "Out of the endpoints that really are unprotected, how many the model found. "
-                      "Low means real gaps are missed.",
-            "f1": "One score that balances precision and recall. It is only high when the model finds the real "
-                  "problems without raising false alarms.",
-            "risk_accuracy": "For endpoints the model found correctly, how often it also chose the right risk level.",
-            "unknown_functions": "Functions the model reported that were not in what it was given.",
-        },
-        [], score_unauthenticated_endpoints, unauthenticated_endpoint_metrics, unauthenticated_endpoint_items, "f1",
     ),
     "endpoint_assessment": Scorer(
         "Labels each public handler's authentication and impact separately; code turns the pair into a report severity. "

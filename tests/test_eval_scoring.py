@@ -9,9 +9,7 @@ from evals.scoring import (
     score_bucket_acl,
     score_policy_attachments,
     score_sensitive_env_vars,
-    score_unauthenticated_endpoints,
     sensitive_env_var_metrics,
-    unauthenticated_endpoint_metrics,
 )
 from evals.summary import call_cost, consistency, percentile
 
@@ -43,31 +41,6 @@ def test_macro_f1_averages_classes_that_appear():
     matrix = {"low": {"low": 1}, "high": {"low": 1}}
 
     assert macro_f1(matrix, ("low", "medium", "high")) == pytest.approx((2 / 3 + 0) / 2)
-
-
-def test_endpoint_scoring_matches_function_and_handler_pairs():
-    prediction = [
-        {"function_id": "fn-1", "methods": [
-            {"name": "create", "risk_level": "high", "reason": "r"},
-            {"name": "helper", "risk_level": "low", "reason": "r"},
-        ]},
-        {"function_id": "fn-invented", "methods": [{"name": "x", "risk_level": "low", "reason": "r"}]},
-    ]
-    expected = {"fn-1": {"create": "medium", "health": "low"}, "fn-2": {}}
-
-    counts = score_unauthenticated_endpoints(prediction, expected)
-
-    assert counts == {
-        "true_positives": 1,
-        "false_positives": 2,
-        "false_negatives": 1,
-        "risk": {"medium": {"high": 1}},
-        "unknown_functions": 1,
-    }
-    metrics = unauthenticated_endpoint_metrics(counts)
-    assert metrics["precision"] == pytest.approx(1 / 3)
-    assert metrics["recall"] == pytest.approx(1 / 2)
-    assert metrics["risk_accuracy"] == 0
 
 
 def attachment_report(function_id, policy_id=None, policy_name=None):

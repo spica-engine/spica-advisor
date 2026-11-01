@@ -1,18 +1,5 @@
-import re
-from pathlib import Path
-
 import pytest
 
-from evals.assessment import (
-    ASSESSMENT_INSTRUCTIONS,
-    ENDPOINT_ASSESSMENT_AGENT,
-    EndpointAssessmentResponse,
-    FunctionAssessment,
-    HandlerAssessment,
-    SkippedHandler,
-    predict_endpoint_assessment,
-    report_decision,
-)
 from evals.cases import EvalCase
 from evals.scoring import (
     MISSING,
@@ -21,7 +8,16 @@ from evals.scoring import (
     merge_counts,
     score_endpoint_assessment,
 )
+from evals.tasks import predict_endpoint_assessment
 from evals.validation import check_case
+from spica_advisor.investigations.unauthenticated_endpoints.agents import ENDPOINT_ASSESSMENT_AGENT
+from spica_advisor.investigations.unauthenticated_endpoints.models import (
+    EndpointAssessmentResponse,
+    FunctionAssessment,
+    HandlerAssessment,
+    SkippedHandler,
+)
+from spica_advisor.investigations.unauthenticated_endpoints.policy import report_decision
 from tests.test_eval_validation import LABELS, write_label, write
 
 
@@ -139,13 +135,6 @@ def test_prediction_runs_one_call_per_public_function_and_maps_file_names_back(t
     assert result["skipped"][0]["function_id"] == "fn-1"
 
 
-def test_the_draft_document_and_the_agent_use_the_same_prompt():
-    draft = Path("evals/drafts/endpoint-auth-impact.md").read_text(encoding="utf-8")
-    draft_prompt = re.search(r"## Prompt\n\n```\n(.*?)\n```", draft, re.S).group(1)
-
-    assert ASSESSMENT_INSTRUCTIONS.strip() == draft_prompt.strip()
-
-
 @pytest.fixture
 def labeled_case(tmp_path):
     from tests.test_eval_validation import PRIVATE_FUNCTION_SCHEMA, FUNCTION_SCHEMA, POLICY_SCHEMA, new_case
@@ -161,11 +150,6 @@ def labeled_case(tmp_path):
     for name, content in LABELS.items():
         write_label(case, name, content)
     return case
-
-
-def test_assessment_labels_are_optional(labeled_case):
-    assert check_case(labeled_case) == []
-    assert labeled_case.load_labels().endpoint_assessment.handlers == {}
 
 
 def test_valid_assessment_labels_load_and_pass_the_check(labeled_case):

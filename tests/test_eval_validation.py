@@ -44,7 +44,7 @@ statement:
 
 LABELS = {
     "sensitive-env-vars.yaml": "API_SECRET: high\n",
-    "unauthenticated-endpoints.yaml": "fn-signup:\n  register: high\n",
+    "endpoint-assessment.yaml": "handlers:\n  fn-signup:\n    register: {auth: none, impact: high}\n",
     "policy-attachments.yaml": "- function_id: fn-signup\n  policy_id: policy-user\n",
     "bucket-acl.yaml": (
         "bucket-users:\n"
@@ -161,28 +161,10 @@ def test_reports_duplicate_env_var_names(case):
     assert check_case(case) == ["env var name is not unique: API_SECRET"]
 
 
-def test_every_public_function_needs_a_label_and_only_public_ones(case):
-    write_label(case, "unauthenticated-endpoints.yaml", "fn-private: {}\n")
-
-    assert check_case(case) == [
-        "unauthenticated-endpoints.yaml: missing label for public function fn-signup",
-        "unauthenticated-endpoints.yaml: unexpected public function fn-private",
-    ]
-
-
-def test_labeled_methods_must_be_public_http_triggers(case):
-    write_label(case, "unauthenticated-endpoints.yaml", "fn-signup:\n  register: high\n  helper: low\n  admin: low\n")
-
-    assert check_case(case) == [
-        "unauthenticated-endpoints.yaml: fn-signup.admin is not a public http trigger (public triggers: register)",
-        "unauthenticated-endpoints.yaml: fn-signup.helper is not a public http trigger (public triggers: register)",
-    ]
-
-
 def test_labeled_triggers_must_exist_in_function_source(case):
     write(case, "function/Signup/index.mjs", "export function signup(req, res) {}\n")
 
-    assert check_case(case) == ["unauthenticated-endpoints.yaml: fn-signup.register not found in function source"]
+    assert check_case(case) == ["endpoint-assessment.yaml: fn-signup.register not found in function source"]
 
 
 def test_policy_attachments_must_reference_existing_function(case):

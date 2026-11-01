@@ -3,7 +3,7 @@ import re
 import yaml
 from pydantic import ValidationError
 
-from evals.cases import ALL_LABEL_FILES, LABEL_FILES, OPTIONAL_LABEL_FILES
+from evals.cases import LABEL_FILES
 from spica_advisor.investigations.unauthenticated_endpoints.handlers import has_public_endpoint, public_handler_names
 from spica_advisor.resources import load_buckets, load_env_vars, load_functions
 
@@ -35,7 +35,7 @@ def missing_label_files(case):
 
 def label_validation_problems(error: ValidationError):
     return [
-        f"{ALL_LABEL_FILES[detail['loc'][0]]}: {'.'.join(map(str, detail['loc'][1:])) or '<root>'}: {detail['msg']}"
+        f"{LABEL_FILES[detail['loc'][0]]}: {'.'.join(map(str, detail['loc'][1:])) or '<root>'}: {detail['msg']}"
         for detail in error.errors()
     ]
 
@@ -81,19 +81,10 @@ def public_functions_by_id(functions):
     return {function["_id"]: function for function in functions if has_public_endpoint(function["schema"])}
 
 
-def check_unauthenticated_endpoints(labels, functions):
-    public_functions = public_functions_by_id(functions)
-    labeled = labels.unauthenticated_endpoints
-    problems = key_problems(
-        "unauthenticated_endpoints", "public function", set(labeled), set(public_functions), set(public_functions),
-    )
-    return problems + handler_problems(LABEL_FILES["unauthenticated_endpoints"], labeled, public_functions)
-
-
 def check_endpoint_assessment(labels, functions):
     public_functions = public_functions_by_id(functions)
     assessment = labels.endpoint_assessment
-    file = OPTIONAL_LABEL_FILES["endpoint_assessment"]
+    file = LABEL_FILES["endpoint_assessment"]
     labeled = {function_id: set(methods) for function_id, methods in assessment.handlers.items()}
     skipped = {function_id: set(methods) for function_id, methods in assessment.skipped.items()}
     both = [f"{file}: {function_id}.{method} is both labeled and skipped"
@@ -137,7 +128,6 @@ def check_case(case):
     return [
         *problems,
         *check_sensitive_env_vars(labels, env_vars),
-        *check_unauthenticated_endpoints(labels, functions),
         *check_endpoint_assessment(labels, functions),
         *check_policy_attachments(labels, functions),
         *check_bucket_acl(labels, buckets),

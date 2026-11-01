@@ -205,13 +205,13 @@ legend { font-size: 12.5px; color: var(--muted); padding: 0; margin-bottom: 4px;
   const RESOURCE_PATH = /^(function|bucket|policy|env-var)\/[^.\/][^\/]*(\/[^\/]+)*\.(yaml|mjs|js|ts)$/;
   const LABEL_SHAPES = {
     "sensitive-env-vars.yaml": "mapping",
-    "unauthenticated-endpoints.yaml": "mapping",
+    "endpoint-assessment.yaml": "mapping",
     "policy-attachments.yaml": "list",
     "bucket-acl.yaml": "mapping",
   };
   const EMPTY_LABELS = {
     "sensitive-env-vars.yaml": "{}\n",
-    "unauthenticated-endpoints.yaml": "{}\n",
+    "endpoint-assessment.yaml": "{}\n",
     "policy-attachments.yaml": "[]\n",
     "bucket-acl.yaml": "{}\n",
   };

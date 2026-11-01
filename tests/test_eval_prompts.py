@@ -4,12 +4,12 @@ from types import SimpleNamespace
 import pytest
 
 from evals.cli import prompt_selection
-from evals.inputs import endpoint_prompts_without_handler_names
+from evals.tasks import TASKS
 from evals.prompts import BASELINE, describe_variant, load_variants
-from spica_advisor.investigations.unauthenticated_endpoints.agents import ENDPOINT_RISK_AGENT
+from spica_advisor.investigations.unauthenticated_endpoints.agents import ENDPOINT_ASSESSMENT_AGENT
 
 
-TASK = "unauthenticated_endpoints"
+TASK = "endpoint_assessment"
 
 
 def write_variant(root, name, content, task=TASK):
@@ -22,28 +22,29 @@ def test_baseline_is_always_available_and_uses_the_production_prompt(tmp_path):
     variants = load_variants(TASK, tmp_path)
 
     assert list(variants) == [BASELINE]
-    assert variants[BASELINE].agent_for(ENDPOINT_RISK_AGENT) is ENDPOINT_RISK_AGENT
+    assert variants[BASELINE].agent_for(ENDPOINT_ASSESSMENT_AGENT) is ENDPOINT_ASSESSMENT_AGENT
 
 
 def test_variant_replaces_instructions_and_keeps_the_agent_otherwise(tmp_path):
     write_variant(tmp_path, "strict", "description: Stricter.\ninstructions: Only report handlers.\n")
 
     variant = load_variants(TASK, tmp_path)["strict"]
-    agent = variant.agent_for(ENDPOINT_RISK_AGENT)
+    agent = variant.agent_for(ENDPOINT_ASSESSMENT_AGENT)
 
     assert agent.instructions == "Only report handlers."
-    assert agent.name == ENDPOINT_RISK_AGENT.name
-    assert agent.output_type is ENDPOINT_RISK_AGENT.output_type
-    assert ENDPOINT_RISK_AGENT.instructions != "Only report handlers."
+    assert agent.name == ENDPOINT_ASSESSMENT_AGENT.name
+    assert agent.output_type is ENDPOINT_ASSESSMENT_AGENT.output_type
+    assert ENDPOINT_ASSESSMENT_AGENT.instructions != "Only report handlers."
 
 
-def test_input_only_variant_keeps_the_baseline_instructions(tmp_path):
-    write_variant(tmp_path, "names", "input: source-only\n")
+def test_input_only_variant_keeps_the_baseline_instructions(tmp_path, monkeypatch):
+    monkeypatch.setitem(TASKS[TASK].inputs, "other-input", lambda context: [])
+    write_variant(tmp_path, "names", "input: other-input\n")
 
     details = describe_variant(TASK, load_variants(TASK, tmp_path)["names"])
 
-    assert details["input"] == "source-only"
-    assert details["instructions"] == ENDPOINT_RISK_AGENT.instructions
+    assert details["input"] == "other-input"
+    assert details["instructions"] == ENDPOINT_ASSESSMENT_AGENT.instructions
     assert details["diff"] == []
 
 
@@ -53,7 +54,7 @@ def test_describe_variant_diffs_instructions_against_baseline(tmp_path):
     diff = describe_variant(TASK, load_variants(TASK, tmp_path)["short"])["diff"]
 
     assert "+Report everything." in diff
-    assert any(line.startswith("-") and "Analyze" in line for line in diff)
+    assert any(line.startswith("-") and "Classify" in line for line in diff)
 
 
 @pytest.mark.parametrize(("name", "content", "problem"), [
@@ -77,18 +78,7 @@ def test_unknown_variant_fields_are_rejected(tmp_path):
 
 
 def test_prompt_selection_parses_task_and_variants():
-    assert prompt_selection("unauthenticated_endpoints=baseline, combined") == (TASK, ["baseline", "combined"])
+    assert prompt_selection("endpoint_assessment=baseline, combined") == (TASK, ["baseline", "combined"])
     with pytest.raises(argparse.ArgumentTypeError):
-        prompt_selection("unauthenticated_endpoints")
+        prompt_selection("endpoint_assessment")
 
-
-def test_source_only_input_rebuilds_the_legacy_prompt_input():
-    schema = {"triggers": {"create": {"type": "http", "active": True, "options": {}}}}
-    context = SimpleNamespace(public_functions=[
-        {"_id": "fn-1", "schema": schema, "content": "export function create(req, res) {}"},
-    ])
-
-    [call] = endpoint_prompts_without_handler_names(context)
-
-    assert call.functions == ()
-    assert call.prompt == "Functions:\nfunction_id: fn-1\n```\nexport function create(req, res) {}\n```"

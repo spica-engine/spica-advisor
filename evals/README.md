@@ -14,8 +14,8 @@ python -m evals run --models claude-opus-5-5 --effort low high --workers 8   # c
 python -m evals report evals/runs/<run>  # re-score a run with the current labels
 python -m evals run --investigations broken-access-control   # the agents of one investigation
 python -m evals prompts                  # list every agent's prompt variants
-python -m evals run --models claude-sonnet-5-5 --tasks unauthenticated_endpoints \
-  --prompts unauthenticated_endpoints=baseline,combined --repeats 3
+python -m evals run --models claude-sonnet-5-5 --tasks endpoint_assessment \
+  --prompts endpoint_assessment=baseline,strict --repeats 3
 ```
 
 `run` refuses to start while any selected case fails `check`. It calls each agent directly with the input the
@@ -57,13 +57,12 @@ evals/prompts/<task>/<variant>.yaml
   description: one line shown on the report and cases pages
   instructions: |      # optional; replaces the agent's instructions, defaults to the production ones
     ...
-  input: source-only   # optional; a named input builder from TASKS[<task>].inputs, defaults to the production input
+  input: <name>        # optional; a named input builder from TASKS[<task>].inputs, defaults to the production input
 ```
 
 `baseline` is built in: it is always the prompt the advisor ships with, so a file of that name is rejected. Agents
 left out of `--prompts` run with baseline. The report shows each variant's instructions as a diff against baseline.
-Input builders live in `evals/inputs.py`; they change what the agent is shown. `legacy` uses `source-only` to rebuild
-the endpoint agent's input from before it was given each function's HTTP handler names. To ship a winning variant,
+Input builders are registered in `TASKS[<task>].inputs`; they change what the agent is shown. To ship a winning variant,
 copy its instructions into the agent's `prompts.py` and move its input builder into the investigation's steps.
 
 ## Case layout
@@ -74,7 +73,7 @@ A case is a folder of labels in `evals/expected/` paired with the resources fold
 resources/<case>/            # function/ bucket/ policy/ env-var/, the agents' input
 evals/expected/<case>/       # labels, the expected agent output
   sensitive-env-vars.yaml
-  unauthenticated-endpoints.yaml
+  endpoint-assessment.yaml
   policy-attachments.yaml
   bucket-acl.yaml
 ```
@@ -88,13 +87,12 @@ same rule: only `evals/expected/synthetic-*/` is committed, because real labels 
 | File | Agent and its input | Format | Rules enforced by `check` |
 |---|---|---|---|
 | `sensitive-env-vars.yaml` | Env var sensitiveness classifier, given every env var name | `KEY: low \| medium \| high` | Every env var key in the case, and only those |
-| `unauthenticated-endpoints.yaml` | Endpoint risk analyst, given the source of every function with a public http trigger | `<function _id>: {<handler>: low \| medium \| high}` | Every function with a public http trigger, and only those; handlers must be that function's public http triggers and appear in its source; `{}` when every handler checks auth |
 | `policy-attachments.yaml` | Policy attachment finder, given every function's source | list of `{function_id, policy_id, policy_name}` | `function_id` (where the policy is attached) must exist; set `policy_id` for a hardcoded id and/or `policy_name` for the env var name when it comes from `process.env` |
 | `bucket-acl.yaml` | Bucket ACL evaluator, given one bucket schema at a time | `<bucket _id>: {includes_sensitive_information, read, write}` with `read`/`write` in `applied \| applied_but_in_risk \| not_applied` | Any existing buckets you want scored |
 
-`endpoint-assessment.yaml` is optional and belongs to the `endpoint_assessment` task, a candidate replacement for the endpoint
-agent. It labels two independent axes per public handler, and code turns the pair into a report severity
-(`report_decision` in `evals/assessment.py`):
+`endpoint-assessment.yaml` belongs to the `endpoint_assessment` task, the endpoint agent, which is given one public
+function at a time and can read every function as a file. It labels two independent axes per public handler, and code turns
+the pair into a report severity (`report_decision` in `spica_advisor/investigations/unauthenticated_endpoints/policy.py`):
 
 ```
 handlers:
@@ -104,16 +102,16 @@ skipped:                    # sign-in, registration and password-reset handlers 
   <function _id>: [<handler>, ...]
 ```
 
-Only handlers listed here are scored, so the file can start partial. `python -m evals run --tasks endpoint_assessment` runs it,
-and `--investigations unauthenticated-endpoints` runs it together with the current endpoint agent. The draft of its prompt is in
-`evals/drafts/endpoint-auth-impact.md`.
+Only handlers listed here are scored, so the file can start partial; use `{}` for a case without labels. A handler
+must be one of its function's public http triggers and appear in its source, and cannot be both labeled and skipped.
+`python -m evals run --tasks endpoint_assessment` runs it, and `--investigations unauthenticated-endpoints` runs the
+same agent.
 
 A public http trigger is `type: http`, `active: true` and not `options.authorize: true`, the same filter the investigation applies before calling the agent.
 
-Endpoints that are public by design are still labeled, at `low`: sign-in, registration, password reset and email
-verification flows, and handlers that verify something else before acting, such as a captcha, a one-time code or a
-webhook signature. A handler that only forwards to another handler takes that handler's answer, so a wrapper around
-an authenticated handler is not labeled.
+Sign-in, registration and password-reset handlers go under `skipped`. A one-time code, signed link or webhook signature
+counts as `authentication`, and a captcha alone as `none`. A handler that only forwards to another handler takes that
+handler's labels.
 
 ## Replacing the dummy data
 

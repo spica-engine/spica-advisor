@@ -17,7 +17,7 @@ triggers:
 
 LABELS = {
     "sensitive-env-vars.yaml": "API_KEY: high\n",
-    "unauthenticated-endpoints.yaml": "fn-1:\n  register: high\n",
+    "endpoint-assessment.yaml": "{}\n",
     "policy-attachments.yaml": "[]\n",
     "bucket-acl.yaml": "{}\n",
 }
@@ -162,21 +162,21 @@ def test_cases_page_embeds_models_defaults_and_costs(tmp_path):
 def test_cases_page_lists_prompt_variants_and_keeps_baseline_costs(tmp_path):
     matrix = tmp_path / "matrix.yaml"
     matrix.write_text("models: [claude-sonnet-5-5]\ncases: all\nrepeats: 1\ntasks: all\n")
-    prompts = tmp_path / "prompts" / "unauthenticated_endpoints"
+    prompts = tmp_path / "prompts" / "endpoint_assessment"
     prompts.mkdir(parents=True)
-    (prompts / "strict.yaml").write_text("description: Stricter.\ninput: source-only\ninstructions: x\n")
+    (prompts / "strict.yaml").write_text("description: Stricter.\ninstructions: x\n")
     results = {"run": "r1", "rows": [
-        {"model": "claude-sonnet-5-5", "prompt": "baseline", "task": "unauthenticated_endpoints", "case": "c1", "cost_per_run": 0.5},
-        {"model": "claude-sonnet-5-5", "prompt": "strict", "task": "unauthenticated_endpoints", "case": "c1", "cost_per_run": 0.9},
+        {"model": "claude-sonnet-5-5", "prompt": "baseline", "task": "endpoint_assessment", "case": "c1", "cost_per_run": 0.5},
+        {"model": "claude-sonnet-5-5", "prompt": "strict", "task": "endpoint_assessment", "case": "c1", "cost_per_run": 0.9},
     ]}
 
     data = cases_page_data(results, matrix, tmp_path / "prompts")
 
-    assert data["prompts"]["unauthenticated_endpoints"] == [
+    assert data["prompts"]["endpoint_assessment"] == [
         {"name": "baseline", "description": "The prompt the advisor ships with.", "input": "default"},
-        {"name": "strict", "description": "Stricter.", "input": "source-only"},
+        {"name": "strict", "description": "Stricter.", "input": "default"},
     ]
     assert data["prompts"]["bucket_acl"] == [
         {"name": "baseline", "description": "The prompt the advisor ships with.", "input": "default"},
     ]
-    assert data["costs"] == {"claude-sonnet-5-5|unauthenticated_endpoints|c1": 0.5}
+    assert data["costs"] == {"claude-sonnet-5-5|endpoint_assessment|c1": 0.5}
