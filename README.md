@@ -42,7 +42,7 @@ Create the token once with `claude setup-token` and store it as the `CLAUDE_CODE
 | Input | Default | Description |
 | --- | --- | --- |
 | `claude-code-oauth-token` | | Required. Token from `claude setup-token` |
-| `model` | `claude-sonnet-5-5` | Claude model to run, one of `KNOWN_MODELS` in `spica_advisor/runner.py` |
+| `model` | `claude-haiku-5-5` | Claude model to run, one of `KNOWN_MODELS` in `spica_advisor/runner.py` |
 | `effort` | `low` | `low`, `medium`, `high`, `xhigh` or `max` |
 | `project-dir` | `.` | Directory holding the Spica resources |
 | `output-dir` | `output` | Directory for the JSON and Markdown reports |
@@ -57,7 +57,7 @@ or set `CLAUDE_CODE_OAUTH_TOKEN`. The model and effort come from the environment
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SPICA_ADVISOR_MODEL` | `claude-sonnet-5-5` | Claude model to run |
+| `SPICA_ADVISOR_MODEL` | `claude-haiku-5-5` | Claude model to run |
 | `SPICA_ADVISOR_EFFORT` | Claude Code's default | `low`, `medium`, `high`, `xhigh` or `max` |
 
 `ANTHROPIC_API_KEY` is removed from Claude Code's environment, so runs never bill the API.

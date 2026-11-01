@@ -9,7 +9,7 @@ inputs:
     description: Claude Code token from `claude setup-token`, so runs use the Claude subscription.
     required: true
   model:
-    description: Claude model to run. Uses claude-sonnet-5-5 when empty.
+    description: Claude model to run. Uses claude-haiku-5-5 when empty.
     default: ""
   effort:
     description: Claude Code effort level (low, medium, high, xhigh, max). The investigations make small judgments, so low is enough.

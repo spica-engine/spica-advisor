@@ -16,7 +16,7 @@ from spica_advisor.metrics import OK_STATUS, CallRecord
 CLI = "claude"
 MODEL_ENV_VAR = "SPICA_ADVISOR_MODEL"
 EFFORT_ENV_VAR = "SPICA_ADVISOR_EFFORT"
-DEFAULT_MODEL = "claude-sonnet-5-5"
+DEFAULT_MODEL = "claude-haiku-5-5"
 KNOWN_MODELS = ("claude-haiku-4-5", "claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 MAX_TURNS = 10
