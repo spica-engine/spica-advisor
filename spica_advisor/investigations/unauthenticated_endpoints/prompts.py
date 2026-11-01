@@ -46,7 +46,8 @@ name and reason.
 """
 
 
-# About 125k tokens, which leaves room in the model's context for the instructions and the answer.
+# Spica code is about 2.4 characters per token, so this is roughly 200k tokens. A prompt that long costs far more per token
+# than a short one, so it is worth keeping batches below it where the code allows.
 MAX_PROMPT_CHARS = 500_000
 
 
