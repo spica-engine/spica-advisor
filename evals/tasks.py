@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from evals.assessment import ENDPOINT_ASSESSMENT_AGENT, predict_endpoint_assessment
 from evals.inputs import endpoint_calls_with_files, endpoint_prompts_without_handler_names
 from spica_advisor.agent import Agent
 from spica_advisor.investigations.broken_access_control.agents import BUCKET_ACL_AGENT, POLICY_ATTACHMENT_AGENT
@@ -93,6 +94,12 @@ TASKS = {
             inputs={"source-only": endpoint_prompts_without_handler_names, "files": endpoint_calls_with_files},
         ),
         AgentTask(
+            name="endpoint_assessment",
+            agent=ENDPOINT_ASSESSMENT_AGENT,
+            has_input=lambda case, labels: bool(labels.endpoint_assessment.handlers or labels.endpoint_assessment.skipped),
+            predict=predict_endpoint_assessment,
+        ),
+        AgentTask(
             name="policy_attachments",
             agent=POLICY_ATTACHMENT_AGENT,
             has_input=lambda case, labels: bool(load_functions(case.project_dir)),
@@ -110,6 +117,6 @@ TASKS = {
 
 INVESTIGATION_TASKS = {
     "sensitive-env-vars": ["sensitive_env_vars"],
-    "unauthenticated-endpoints": ["unauthenticated_endpoints"],
+    "unauthenticated-endpoints": ["unauthenticated_endpoints", "endpoint_assessment"],
     "broken-access-control": ["policy_attachments", "bucket_acl"],
 }

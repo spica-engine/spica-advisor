@@ -4,6 +4,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from evals.assessment import AuthLevel, Impact
 from spica_advisor.investigations.broken_access_control.models import RowLevelSecurityStatus
 from spica_advisor.investigations.sensitive_env_vars.models import SensitivenessLevel
 from spica_advisor.investigations.unauthenticated_endpoints.models import RiskLevel
@@ -17,6 +18,8 @@ LABEL_FILES = {
     "policy_attachments": "policy-attachments.yaml",
     "bucket_acl": "bucket-acl.yaml",
 }
+OPTIONAL_LABEL_FILES = {"endpoint_assessment": "endpoint-assessment.yaml"}
+ALL_LABEL_FILES = {**LABEL_FILES, **OPTIONAL_LABEL_FILES}
 
 
 class Label(BaseModel):
@@ -41,11 +44,22 @@ class BucketAclLabel(Label):
     write: RowLevelSecurityStatus
 
 
+class HandlerLabel(Label):
+    auth: AuthLevel
+    impact: Impact
+
+
+class EndpointAssessmentLabels(Label):
+    handlers: dict[str, dict[str, HandlerLabel]] = {}
+    skipped: dict[str, list[str]] = {}
+
+
 class CaseLabels(Label):
     sensitive_env_vars: dict[str, SensitivenessLevel] = {}
     unauthenticated_endpoints: dict[str, dict[str, RiskLevel]] = {}
     policy_attachments: list[PolicyAttachmentLabel] = []
     bucket_acl: dict[str, BucketAclLabel] = {}
+    endpoint_assessment: EndpointAssessmentLabels = EndpointAssessmentLabels()
 
 
 @dataclass(frozen=True)
@@ -55,13 +69,14 @@ class EvalCase:
     expected_dir: Path
 
     def label_path(self, field):
-        return self.expected_dir / LABEL_FILES[field]
+        return self.expected_dir / ALL_LABEL_FILES[field]
 
     def load_labels(self) -> CaseLabels:
         labels = {
             field: data
-            for field in LABEL_FILES
-            if (data := yaml.safe_load(self.label_path(field).read_text(encoding="utf-8"))) is not None
+            for field in ALL_LABEL_FILES
+            if (field in LABEL_FILES or self.label_path(field).exists())
+            and (data := yaml.safe_load(self.label_path(field).read_text(encoding="utf-8"))) is not None
         }
         return CaseLabels.model_validate(labels)
 

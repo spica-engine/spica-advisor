@@ -255,7 +255,8 @@ def test_matrix_runs_jobs_concurrently(tmp_path, case):
     run_matrix(matrix, run_dir, [case], create_runner=lambda model, effort: FakeRunner(model), workers=2)
 
     runs = read_jsonl(run_dir / "runs.jsonl")
-    assert len(runs) == 2 * 2 * len(TASKS)
+    labels = case.load_labels()
+    assert len(runs) == 2 * 2 * sum(task.has_input(case, labels) for task in TASKS.values())
     assert {run["status"] for run in runs} == {"ok"}
     assert sum(run["calls"] for run in runs) == len(read_jsonl(run_dir / "calls.jsonl"))
     assert read_json(output_path(run_dir, "claude-opus-5-5", "demo", 2, "bucket_acl"))["status"] == "ok"

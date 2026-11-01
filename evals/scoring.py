@@ -2,6 +2,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from evals.assessment import NOT_REPORTED, report_decision
 from spica_advisor.investigations.broken_access_control.steps import clean
 
 
@@ -147,6 +148,77 @@ def unauthenticated_endpoint_items(prediction, expected):
             for function_id, method in expected_endpoint_pairs(expected)}
 
 
+SKIPPED = "skipped"
+CLASSIFIED = "classified"
+
+
+def assessed_handlers(prediction):
+    return {(function["function_id"], handler["name"]): handler
+            for function in prediction.get("functions", []) for handler in function["handlers"]}
+
+
+def skipped_handlers(prediction):
+    return {(entry["function_id"], entry["name"]) for entry in prediction.get("skipped", [])}
+
+
+def predicted_assessment(key, assessed, skipped):
+    if key in assessed:
+        return assessed[key]["auth"], assessed[key]["impact"]
+    return (SKIPPED, SKIPPED) if key in skipped else (MISSING, MISSING)
+
+
+def decision_of(auth, impact):
+    return report_decision(auth, impact) if auth in ("none", "authentication", "authorization") else auth
+
+
+def expected_pairs_of(expected_by_function):
+    return [(function_id, handler) for function_id, handlers in expected_by_function.items() for handler in handlers]
+
+
+def score_endpoint_assessment(prediction, expected):
+    assessed, skipped = assessed_handlers(prediction), skipped_handlers(prediction)
+    labeled = {(function_id, handler): label
+               for function_id, handlers in expected["handlers"].items() for handler, label in handlers.items()}
+    answers = {key: predicted_assessment(key, assessed, skipped) for key in labeled}
+    decisions = {key: (decision_of(*answers[key]), decision_of(label["auth"], label["impact"]))
+                 for key, label in labeled.items()}
+    reported = [(predicted != NOT_REPORTED and predicted not in (SKIPPED, MISSING), expected_decision != NOT_REPORTED)
+                for predicted, expected_decision in decisions.values()]
+    expected_skips = expected_pairs_of(expected["skipped"])
+    return {
+        "auth": confusion((label["auth"], answers[key][0]) for key, label in labeled.items()),
+        "impact": confusion((label["impact"], answers[key][1]) for key, label in labeled.items()),
+        "decision": confusion((expected_decision, predicted) for predicted, expected_decision in decisions.values()),
+        "true_positives": sum(predicted and wanted for predicted, wanted in reported),
+        "false_positives": sum(predicted and not wanted for predicted, wanted in reported),
+        "false_negatives": sum(wanted and not predicted for predicted, wanted in reported),
+        "skip": confusion((SKIPPED, SKIPPED if key in skipped else CLASSIFIED if key in assessed else MISSING)
+                          for key in expected_skips),
+        "wrongly_skipped": sum(answers[key][0] == SKIPPED for key in labeled),
+    }
+
+
+def endpoint_assessment_metrics(counts):
+    skip = counts.get("skip", {})
+    return {
+        "auth_accuracy": accuracy(counts.get("auth", {})),
+        "impact_accuracy": accuracy(counts.get("impact", {})),
+        "decision_accuracy": accuracy(counts.get("decision", {})),
+        **{f"reported_{name}": value for name, value in detection(
+            counts.get("true_positives", 0), counts.get("false_positives", 0), counts.get("false_negatives", 0)).items()},
+        "skipped_recall": ratio(cell(skip, SKIPPED, SKIPPED), row_total(skip, SKIPPED)),
+        "wrongly_skipped": counts.get("wrongly_skipped", 0),
+    }
+
+
+def endpoint_assessment_items(prediction, expected):
+    assessed, skipped = assessed_handlers(prediction), skipped_handlers(prediction)
+    keys = [*(key for key in expected_pairs_of(expected["handlers"])), *expected_pairs_of(expected["skipped"])]
+    return {f"{function_id}.{handler}": "/".join(predicted_assessment((function_id, handler), assessed, skipped))
+            if (function_id, handler) in assessed else predicted_assessment((function_id, handler), assessed, skipped)[0]
+            for function_id, handler in keys}
+
+
 def attachment_references(function_id, policy_id, policy_name):
     return {(function_id, clean(value)) for value in (policy_id, policy_name) if value}
 
@@ -264,6 +336,25 @@ SCORERS = {
             "unknown_functions": "Functions the model reported that were not in what it was given.",
         },
         [], score_unauthenticated_endpoints, unauthenticated_endpoint_metrics, unauthenticated_endpoint_items, "f1",
+    ),
+    "endpoint_assessment": Scorer(
+        "Labels each public handler's authentication and impact separately; code turns the pair into a report severity. "
+        "Scored per labeled handler.",
+        {
+            "auth_accuracy": "How often the model chose the right authentication level (none, authentication, "
+                             "authorization).",
+            "impact_accuracy": "How often the model chose the right impact (low, medium, high), ignoring auth.",
+            "decision_accuracy": "How often the pair of answers leads to the same report severity as the labels. "
+                                 "This is what a reviewer would see.",
+            "reported_precision": "When the model's answers put a handler in the report, how often the labels agree.",
+            "reported_recall": "Out of the handlers the labels put in the report, how many the model's answers did.",
+            "reported_f1": "One score that balances those two.",
+            "skipped_recall": "Out of the sign-in and similar handlers that should be skipped, how many the model "
+                              "skipped.",
+            "wrongly_skipped": "Handlers that should have been judged but the model skipped. It should be 0.",
+        },
+        {"functions": [], "skipped": []}, score_endpoint_assessment, endpoint_assessment_metrics,
+        endpoint_assessment_items, "decision_accuracy",
     ),
     "policy_attachments": Scorer(
         "Searches function code for policies attached to users. Scored per attachment and policy reference.",

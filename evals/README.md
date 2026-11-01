@@ -92,6 +92,22 @@ same rule: only `evals/expected/synthetic-*/` is committed, because real labels 
 | `policy-attachments.yaml` | Policy attachment finder, given every function's source | list of `{function_id, policy_id, policy_name}` | `function_id` (where the policy is attached) must exist; set `policy_id` for a hardcoded id and/or `policy_name` for the env var name when it comes from `process.env` |
 | `bucket-acl.yaml` | Bucket ACL evaluator, given one bucket schema at a time | `<bucket _id>: {includes_sensitive_information, read, write}` with `read`/`write` in `applied \| applied_but_in_risk \| not_applied` | Any existing buckets you want scored |
 
+`endpoint-assessment.yaml` is optional and belongs to the `endpoint_assessment` task, a candidate replacement for the endpoint
+agent. It labels two independent axes per public handler, and code turns the pair into a report severity
+(`report_decision` in `evals/assessment.py`):
+
+```
+handlers:
+  <function _id>:
+    <handler>: {auth: none | authentication | authorization, impact: low | medium | high}
+skipped:                    # sign-in, registration and password-reset handlers the agent should not classify
+  <function _id>: [<handler>, ...]
+```
+
+Only handlers listed here are scored, so the file can start partial. `python -m evals run --tasks endpoint_assessment` runs it,
+and `--investigations unauthenticated-endpoints` runs it together with the current endpoint agent. The draft of its prompt is in
+`evals/drafts/endpoint-auth-impact.md`.
+
 A public http trigger is `type: http`, `active: true` and not `options.authorize: true`, the same filter the investigation applies before calling the agent.
 
 Endpoints that are public by design are still labeled, at `low`: sign-in, registration, password reset and email
