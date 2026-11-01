@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 
 from spica_advisor.function_files import restore_function_ids
-from spica_advisor.investigations.unauthenticated_endpoints.agents import ENDPOINT_RISK_AGENT
+from spica_advisor.investigations.unauthenticated_endpoints.agents import ENDPOINT_ASSESSMENT_AGENT
 from spica_advisor.investigations.unauthenticated_endpoints.context import UnauthenticatedEndpointsContext
 from spica_advisor.investigations.unauthenticated_endpoints.handlers import has_public_endpoint, served_handler_names
-from spica_advisor.investigations.unauthenticated_endpoints.prompts import endpoint_risk_inputs
+from spica_advisor.investigations.unauthenticated_endpoints.policy import NOT_REPORTED, report_decision
+from spica_advisor.investigations.unauthenticated_endpoints.prompts import handler_call_prompt
 from spica_advisor.log import LOGGER
 from spica_advisor.resources import load_functions, resource_locations
 
@@ -41,26 +42,36 @@ def prepare_for_analysis(context: UnauthenticatedEndpointsContext):
         LOGGER.info("Skipped %d functions whose public triggers have no exported handler", skipped)
 
 
-def endpoint_risk_calls(context: UnauthenticatedEndpointsContext):
-    return [EndpointCall(prompt) for prompt in endpoint_risk_inputs(context.analysis_inputs)]
+def endpoint_calls(context: UnauthenticatedEndpointsContext):
+    # Every function is a file, so the agent can follow a handler into helpers that have no public endpoint.
+    return [EndpointCall(handler_call_prompt(function), tuple(context.functions)) for function in context.analysis_inputs]
 
 
-def analyze_endpoints(context: UnauthenticatedEndpointsContext, build_calls=endpoint_risk_calls):
+def analyze_endpoints(context: UnauthenticatedEndpointsContext, build_calls=endpoint_calls):
     calls = build_calls(context)
     if len(calls) > 1:
         LOGGER.info("Analyzing %d functions in %d calls", len(context.analysis_inputs), len(calls))
     for call in calls:
-        response = context.runner.run(ENDPOINT_RISK_AGENT, call.prompt, functions=call.functions)
-        restore_function_ids(response.functions, context.functions)
-        context.function_risks.extend(response.functions)
+        response = context.runner.run(ENDPOINT_ASSESSMENT_AGENT, call.prompt, functions=call.functions)
+        restore_function_ids([*response.functions, *response.skipped], context.functions)
+        context.assessments.extend(response.functions)
+        context.skipped_handlers.extend(response.skipped)
 
 
-def function_report(function_risk, location, handlers):
+def reported_method(handler):
+    severity = report_decision(handler.auth, handler.impact)
+    if severity == NOT_REPORTED:
+        return None
+    return {"name": handler.name, "risk_level": severity, "reason": f"{handler.auth_reason}; {handler.impact_reason}"}
+
+
+def function_report(assessment, location, handler_names):
+    methods = [reported_method(handler) for handler in assessment.handlers if handler.name in handler_names]
     return {
-        "function_id": function_risk.function_id,
+        "function_id": assessment.function_id,
         "function_name": location.get("name"),
         "path": location.get("path"),
-        "methods": [method.model_dump() for method in function_risk.methods if method.name in handlers],
+        "methods": [method for method in methods if method],
     }
 
 
@@ -68,10 +79,10 @@ def report_unauthenticated_endpoints(context: UnauthenticatedEndpointsContext):
     handlers = {function["_id"]: set(function["handlers"]) for function in context.analysis_inputs}
     locations = resource_locations(context.project_dir, "function")
     reports = [
-        function_report(function_risk, locations.get(function_risk.function_id, {}), handlers[function_risk.function_id])
-        for function_risk in context.function_risks
-        if function_risk.function_id in handlers
+        function_report(assessment, locations.get(assessment.function_id, {}), handlers[assessment.function_id])
+        for assessment in context.assessments
+        if assessment.function_id in handlers
     ]
     context.report = [report for report in reports if report["methods"]]
-    method_count = sum(len(function_risk["methods"]) for function_risk in context.report)
+    method_count = sum(len(function["methods"]) for function in context.report)
     LOGGER.info("Found %d unauthenticated endpoints in %d functions", method_count, len(context.report))

@@ -15,7 +15,7 @@ def rows(report, links):
 
 SECTION = Section(
     title="Unauthenticated endpoints",
-    description="Public HTTP functions with methods that run without an authentication check.",
+    description="Public HTTP functions with methods that run without an authentication check, or that only check who the caller is.",
     columns=("Function", "Method", "Why"),
     rows=rows,
 )

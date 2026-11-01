@@ -1,84 +1,50 @@
 from spica_advisor.investigations.unauthenticated_endpoints.handlers import DEFAULT_EXPORT
 
 
-# About 75k tokens, so a single request stays well under provider per-minute token limits.
-MAX_BATCH_CHARS = 300_000
+ENDPOINT_ASSESSMENT_INSTRUCTIONS = """
+Classify the authentication and the impact of each public HTTP handler I give you.
+Judge only the handlers listed in http_handlers. Ignore every other export. The
+source of every function is a file, and the listing maps each file to its function_id.
+Do not classify obvious sign-in, registration and password-reset handlers. List each
+one in `skipped` with its name and a short reason instead.
 
-ENDPOINT_RISK_INSTRUCTIONS = """
-Analyze javascript/typescript Spica functions to find public HTTP handlers
-that run without an authentication check, and evaluate their risk.
+Auth, for each handler:
+1- Look for an auth check that runs BEFORE the handler reads or writes anything.
+   It can be inside the handler, a call to another function in the file, a function
+   imported from another Spica function (`@spica-fn/<name>`; open its file from the
+   listing), or a wrapper that takes the handler as an argument. Follow only calls that
+   could perform auth. Stop at npm and devkit imports and judge them by name.
+2- auth is one of:
+   - none: no check at all, or only a captcha
+   - authentication: verifies who the caller is, for example a token or session, but
+     checks no permission, role or ownership. A one-time code, signed link or webhook
+     signature also counts
+   - authorization: verifies who the caller is AND checks a permission, role or ownership
+     for the action. Returning only records that belong to the caller counts as an
+     ownership check, when the caller's identity comes from the verified token and never
+     from request parameters.
 
-Each function lists its http_handlers: the exported functions Spica serves
-over HTTP. Other exports are internal helpers or other kinds of triggers.
+Impact, for each handler, as if every caller were allowed to call it:
+3- impact is one of:
+   - high: writes or deletes data; sends data to real targets such as emails or third-party
+     services; reads personal or sensitive data; installs or runs code or system commands
+   - medium: reads public data, such as public configuration, maintenance mode or blogs;
+     reads internal data without returning it; sends data to a test or non-critical target
+   - low: returns an empty object or fixed dummy data, only logs to the console, does only
+     calculations or validation on the request, or does nothing
+4- Follow only the calls that change data or return data, and stop at npm and devkit
+   imports.
 
-1- Check ONLY the handlers listed in http_handlers. Ignore every other export,
-   even when it receives request and response objects.
-2- Check whether each listed handler's implementation starts with any
-   authentication or authorization check. Don't dive into auth
-   implementations, just determine any sign of auth checks.
-   When a handler mostly forwards the request to another function in the same
-   source, for example `return getConversation(req, res)` or building a new
-   request and calling another handler with it, judge the function it forwards
-   to instead. A wrapper around a function that checks auth is protected.
-3- Report a handler ONLY when it has no auth check. Leave out every handler
-   that has one, and return an empty methods list for a function whose
-   handlers all check auth.
-   A sign-in, registration or password reset handler is public by design
-   when anyone can call it and the only check is the user's own sign-in
-   details, such as an email and password or a provider token. Report it
-   and rate it low. If the caller must first present an API key, an
-   identity token or a signature, that is an auth check: leave the
-   handler out.
-4- Evaluate their risk by the following criteria, checking low first:
-   - low: The endpoint is public by design and protected in another way:
-     sign-in, registration, password reset and email verification flows, or
-     code that verifies something else before acting, such as a captcha or
-     Turnstile token, a one-time code or signed link, or a webhook signature.
-     Also code that just returns some dummy data like "OK", json array,
-     nothing that harms spica or other critical resources.
-   - high: Code performs CRUD on any database, bucket, storage etc.
-   - medium: Code performs some calculations, tries to validate some logic,
-     spica behavior, or interacts with non-critical resources like sending an
-     http request to another testing purpose spica, or google.com.
-     Or code read somethings but never return them.
-5- Write a very short explanation of the risk evaluation to reason.
-
-Return one entry per function with it's id, methods object array including
-method name, risk level, and reason.
+Write each reason as a few words. Return one entry per given function with its
+function_id from the listing, never the file name. For each handler, use the name
+exactly as it appears in http_handlers.
+Also return `skipped`: one entry per skipped handler with its function_id, handler
+name and reason.
 """
 
 
-def handler_label(name):
-    # Spica serves a function's default export under the trigger name "default".
-    return f"{name} (the default export)" if name == DEFAULT_EXPORT else name
-
-
-def format_function(function):
-    return f"""function_id: {function["_id"]}
-http_handlers: {", ".join(handler_label(name) for name in function["handlers"])}
-```
-{function["content"]}
-```"""
-
-
-def endpoint_risk_input(functions):
-    sources = "\n\n".join(format_function(function) for function in functions)
-    return f"Functions:\n{sources}"
-
-
-def batch_by_size(functions, format_one=format_function):
-    batches = []
-    batch_chars = 0
-    for function in functions:
-        function_chars = len(format_one(function))
-        if batches and batch_chars + function_chars <= MAX_BATCH_CHARS:
-            batches[-1].append(function)
-            batch_chars += function_chars
-        else:
-            batches.append([function])
-            batch_chars = function_chars
-    return batches
-
-
-def endpoint_risk_inputs(functions):
-    return [endpoint_risk_input(batch) for batch in batch_by_size(functions)]
+def handler_call_prompt(function):
+    lines = ["Judge these handlers.", f"function_id: {function['_id']}", f"http_handlers: {', '.join(function['handlers'])}"]
+    if DEFAULT_EXPORT in function["handlers"]:
+        lines.append("`default` is the default export of the file.")
+    return "\n".join(lines)

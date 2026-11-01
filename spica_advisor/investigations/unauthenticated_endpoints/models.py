@@ -3,19 +3,29 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+AuthLevel = Literal["none", "authentication", "authorization"]
 RiskLevel = Literal["low", "medium", "high"]
 
 
-class MethodRisk(BaseModel):
+class HandlerAssessment(BaseModel):
     name: str
-    risk_level: RiskLevel
+    auth_reason: str
+    auth: AuthLevel
+    impact_reason: str
+    impact: RiskLevel
+
+
+class FunctionAssessment(BaseModel):
+    function_id: str
+    handlers: list[HandlerAssessment]
+
+
+class SkippedHandler(BaseModel):
+    function_id: str
+    name: str
     reason: str
 
 
-class FunctionRisk(BaseModel):
-    function_id: str
-    methods: list[MethodRisk]
-
-
-class FunctionRiskResponse(BaseModel):
-    functions: list[FunctionRisk]
+class EndpointAssessmentResponse(BaseModel):
+    functions: list[FunctionAssessment]
+    skipped: list[SkippedHandler]
