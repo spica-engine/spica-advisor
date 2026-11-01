@@ -8,6 +8,10 @@ from spica_advisor.markdown import Section
 from spica_advisor.runner import ClaudeRunner
 
 
+class InvestigationError(Exception):
+    """A failure whose message is safe and useful to show in the report."""
+
+
 @dataclass
 class InvestigationContext:
     project_dir: Path

@@ -3,7 +3,7 @@ import pytest
 from spica_advisor.investigations.broken_access_control.markdown import SECTION as ACCESS_SECTION
 from spica_advisor.investigations.sensitive_env_vars.markdown import SECTION as ENV_SECTION
 from spica_advisor.investigations.unauthenticated_endpoints.markdown import SECTION as ENDPOINT_SECTION
-from spica_advisor.markdown import Links, ReportMetadata, escape, render_report
+from spica_advisor.markdown import Failure, Links, ReportMetadata, escape, render_report
 
 
 ENV_REPORT = [
@@ -114,6 +114,20 @@ def test_failed_investigation_is_not_reported_as_clean():
     assert "No findings.\n\n| Investigation" not in report.text
     assert "| Endpoints without full access control | ⚠️ Failed | – | – |" in report.text
     assert "This investigation failed" in report.text
+
+
+def test_failed_investigation_shows_its_reason_inside_the_report():
+    report = render_report([(ENDPOINT_SECTION, Failure("Function A | B is too large."))], ReportMetadata(model="m"))
+
+    assert "This investigation failed" in report.text
+    assert "Reason: Function A \\| B is too large." in report.text
+    assert not report.complete
+
+
+def test_failed_investigation_without_a_reason_shows_no_reason():
+    report = render_report([(ENDPOINT_SECTION, Failure())], ReportMetadata(model="m"))
+
+    assert "Reason:" not in report.text
 
 
 def test_header_shows_effort_only_when_set():

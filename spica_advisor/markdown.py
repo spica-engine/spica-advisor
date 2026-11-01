@@ -36,6 +36,11 @@ class Links:
 
 
 @dataclass(frozen=True)
+class Failure:
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class Row:
     severity: str
     cells: tuple[str, ...]
@@ -98,9 +103,13 @@ def overview(results):
     return summary
 
 
-def render_section(section, rows, appendix=""):
+def failure_message(failure):
+    return f"{FAILED_SECTION}\n\nReason: {escape(failure.reason)}" if failure.reason else FAILED_SECTION
+
+
+def render_section(section, rows, appendix="", failure=None):
     if rows is None:
-        body = FAILED_SECTION
+        body = failure_message(failure or Failure())
     elif not rows:
         body = "No findings."
     else:
@@ -114,8 +123,9 @@ def sorted_rows(rows):
 
 def render_report(reports, metadata):
     links = Links(metadata.source_url)
+    reports = [(section, Failure() if report is None else report) for section, report in reports]
     results = [
-        (section, None if report is None else sorted_rows(section.rows(report, links)))
+        (section, None if isinstance(report, Failure) else sorted_rows(section.rows(report, links)))
         for section, report in reports
     ]
     appendices = [
@@ -125,7 +135,8 @@ def render_report(reports, metadata):
     text = "\n\n".join([
         header(metadata),
         overview(results),
-        *(render_section(section, rows, appendix) for (section, rows), appendix in zip(results, appendices)),
+        *(render_section(section, rows, appendix, report if rows is None else None)
+          for (section, rows), appendix, (_, report) in zip(results, appendices, reports)),
         DISCLAIMER,
     ]) + "\n"
     return MarkdownReport(

@@ -4,9 +4,10 @@ from pathlib import Path
 from pprint import pformat
 
 from spica_advisor.github import GitHubIssues, append_step_summary, report_metadata, step_summary_path
+from spica_advisor.investigation import InvestigationError
 from spica_advisor.investigations import INVESTIGATIONS
 from spica_advisor.log import LOGGER, configure_logging
-from spica_advisor.markdown import render_report
+from spica_advisor.markdown import Failure, render_report
 from spica_advisor.metrics import totals
 from spica_advisor.report import write_markdown, write_report
 from spica_advisor.runner import ClaudeRunner
@@ -103,8 +104,12 @@ def run_investigations(investigations, runner, project_dir, output_dir):
         first_call = len(runner.calls)
         try:
             reports[investigation.name] = run_investigation(investigation, context, output_dir)
+        except InvestigationError as error:
+            LOGGER.error("Investigation %s failed: %s", investigation.name, error)
+            reports[investigation.name] = Failure(str(error))
         except Exception:
             LOGGER.exception("Investigation %s failed", investigation.name)
+            reports[investigation.name] = Failure()
         log_totals(investigation.name, totals(runner.calls[first_call:]))
     return reports
 
@@ -140,7 +145,7 @@ def run():
     write_markdown(args.output_dir, report.text)
     published = publish(report, metadata, summary_path, issues)
 
-    failed = [investigation.name for investigation in investigations if investigation.name not in reports]
+    failed = [name for name, result in reports.items() if isinstance(result, Failure)]
     if failed:
         LOGGER.error("Failed investigations: %s", ", ".join(failed))
     if failed or not published:
