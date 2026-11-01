@@ -24,7 +24,9 @@ Auth, for each handler:
      checks no permission, role or ownership. A one-time code, signed link or webhook
      signature also counts
    - authorization: verifies who the caller is AND checks a permission, role or ownership
-     for the action
+     for the action. Returning only records that belong to the caller counts as an
+     ownership check, when the caller's identity comes from the verified token and never
+     from request parameters.
 
 Impact, for each handler, as if every caller were allowed to call it:
 3- impact is one of:
