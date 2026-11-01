@@ -1,0 +1,23 @@
+handlers:
+  syn4-fn-forms:
+    submitForm:
+      auth: none
+      impact: high
+    confirmDeletion:
+      auth: authentication
+      impact: high
+    exportForms:
+      auth: none
+      impact: high
+  syn4-fn-maintenance:
+    removeDummyData:
+      auth: none
+      impact: high
+    health:
+      auth: none
+      impact: low
+skipped:
+  syn4-fn-accounts:
+  - login
+  - register
+  - forgotPassword

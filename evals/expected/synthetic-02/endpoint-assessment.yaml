@@ -1,0 +1,40 @@
+handlers:
+  syn2-fn-orders:
+    createOrder:
+      auth: none
+      impact: high
+  syn2-fn-reports:
+    trackDownload:
+      auth: none
+      impact: high
+    reportHealth:
+      auth: none
+      impact: low
+  syn2-fn-pricing:
+    quote:
+      auth: none
+      impact: low
+    validateCoupon:
+      auth: none
+      impact: low
+    ping:
+      auth: none
+      impact: low
+  syn2-fn-webhooks:
+    statusCallback:
+      auth: none
+      impact: medium
+    forwardEvent:
+      auth: none
+      impact: medium
+  syn2-fn-storage:
+    uploadAvatar:
+      auth: none
+      impact: high
+    removeAvatar:
+      auth: none
+      impact: high
+  syn2-fn-leaderboard:
+    getLeaderboard:
+      auth: none
+      impact: medium
