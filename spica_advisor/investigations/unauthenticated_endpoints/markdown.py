@@ -1,19 +1,29 @@
 from spica_advisor.markdown import Row, Section, code, escape
 
 
-AUTH_LABELS = {"none": "None", "authentication": "Authentication only", "authorization": "Authorization"}
+def bullet_list(texts):
+    unique = list(dict.fromkeys(escape(text) for text in texts))
+    return unique[0] if len(unique) == 1 else "<br>".join(f"- {text}" for text in unique)
+
+
+def findings(report):
+    grouped = {}
+    for function in report:
+        for method in function["methods"]:
+            key = (function["function_name"], function["path"], method["severity"], method["auth"])
+            grouped.setdefault(key, []).append(method)
+    return grouped
 
 
 def rows(report, links):
     return [
-        Row(method["severity"], (
-            links.resource(function["function_name"], function["path"]),
-            code(method["name"]),
-            f"{AUTH_LABELS[method['auth']]}: {escape(method['auth_reason'])}",
-            f"{method['impact'].capitalize()}: {escape(method['impact_reason'])}",
+        Row(severity, (
+            links.resource(function_name, path),
+            ", ".join(code(method["name"]) for method in methods),
+            bullet_list(method["auth_reason"] for method in methods),
+            bullet_list(method["impact_reason"] for method in methods),
         ))
-        for function in report
-        for method in function["methods"]
+        for (function_name, path, severity, auth), methods in findings(report).items()
     ]
 
 

@@ -58,27 +58,32 @@ def test_report_links_resources_to_the_scanned_commit():
 
     assert "Commit [`a1b2c3d`](https://github.com/o/r/commit/a1b2c3d4e5)" in report.text
     assert "[Workflow run](https://github.com/o/r/actions/runs/7)" in report.text
-    assert ("| 🔴 High | [Login](https://github.com/o/r/tree/a1b2c3d4e5/spica/function/Login) "
-            "| `resetPassword` | None: no check | High: updates users \\| without auth |") in report.text
+    assert ("| [Login](https://github.com/o/r/tree/a1b2c3d4e5/spica/function/Login) "
+            "| `resetPassword` | no check | updates users \\| without auth |") in report.text
 
 
-def test_report_shows_paths_when_not_on_github():
+def test_report_shows_plain_names_when_not_on_github():
     report = render_report([(ACCESS_SECTION, ACCESS_REPORT)], ReportMetadata(model="m"))
 
-    assert ("| 🟠 Medium | Customer (`policy/Customer`) | `statement[2]` "
-            "| Payment Methods (`bucket/Payment-Methods`) | Read | Yes | Applied, but at risk "
+    assert ("### 🟠 Medium\n\n#### Broken access control\n\n"
+            "Policies attached to users that can reach buckets without effective row-level security. "
+            "Buckets holding sensitive data rank higher.\n\n"
+            "| Policy | Bucket | Why |\n"
+            "| --- | --- | --- |\n"
+            "| Customer "
+            "| Payment Methods "
             "| filter can be bypassed |") in report.text
 
 
 def test_access_section_lists_where_policies_are_attached_and_defined():
     report = render_report([(ACCESS_SECTION, ACCESS_REPORT)], ReportMetadata(model="m"))
 
-    attachments = report.text.split("#### Where these policies are attached to users\n\n")[1]
+    attachments = report.text.split("### Where these policies are attached to users\n\n")[1]
     assert attachments.startswith("| Policy | Attached in | Attaching code | Defined in | Defining code |")
-    assert ("| Customer (`policy/Customer`) | Signup (`function/Signup`) "
+    assert ("| Customer | Signup "
             "| `await Auth.policy.attach( user._id, POLICY \\|\\| fallback );` "
-            "| Signup (`function/Signup`) | `const POLICY = process.env.CUSTOMER_POLICY;` |") in attachments
-    assert f"| Import (`function/Import`) | `{'x' * 149}…` | Constants (`function/Constants`) |" in attachments
+            "| Signup | `const POLICY = process.env.CUSTOMER_POLICY;` |") in attachments
+    assert f"| Import | `{'x' * 149}…` | Constants |" in attachments
 
 
 def test_attachments_table_is_omitted_without_attachments():
@@ -103,7 +108,7 @@ def test_access_severity_rises_with_bucket_sensitivity(status, sensitive, label)
 
     report = render_report([(ACCESS_SECTION, access_report)], ReportMetadata(model="m"))
 
-    assert f"| {label} | P (`policy/P`)" in report.text
+    assert f"### {label}\n\n#### Broken access control" in report.text
 
 
 def test_failed_investigation_is_not_reported_as_clean():
@@ -142,7 +147,7 @@ def test_clean_report_says_so():
     report = render_report([(ENV_SECTION, []), (ENDPOINT_SECTION, [])], ReportMetadata(model="m"))
 
     assert report.complete
-    assert report.text.count("No findings.") == 3
+    assert report.text.count("No findings.") == 1
 
 
 def test_escape_keeps_llm_text_inside_its_table_cell():
@@ -155,3 +160,69 @@ def test_link_labels_escape_brackets():
 
 def test_resource_without_path_is_plain_text():
     assert Links("https://github.com/o/r/tree/sha").resource("Name", None) == "Name"
+
+
+def test_access_findings_merge_statements_granting_the_same_access_to_a_bucket_keeping_the_shortest_reason():
+    def bucket(status, sensitive, reason):
+        return {"_id": "b1", "name": "Services", "path": "bucket/Services", "report": {
+            "access": "write", "row_level_security_status": status, "reason": reason, "includes_sensitive_information": sensitive}}
+
+    access_report = [{"policy_id": "p1", "policy_name": "User", "path": "policy/User", "attachments": [], "affected_statements": [
+        {"statement_index": 4, "affected_buckets": [bucket("not_applied", True, "write is always true")]},
+        {"statement_index": 2, "affected_buckets": [bucket("applied_but_in_risk", False, "admin bypasses the owner check")]},
+    ]}]
+
+    report = render_report([(ACCESS_SECTION, access_report)], ReportMetadata(model="m"))
+
+    assert report.finding_count == 1
+    assert "| User | Services | write is always true |" in report.text
+
+
+def test_endpoint_methods_with_the_same_missing_check_share_a_row():
+    def method(name, impact_reason):
+        return {"name": name, "severity": "high", "auth": "none", "auth_reason": "no check on caller",
+                "impact": "high", "impact_reason": impact_reason}
+
+    endpoint_report = [{"function_id": "f1", "function_name": "Stripe", "path": "function/Stripe", "methods": [
+        method("createCustomer", "creates customer"), method("deleteCustomer", "deletes customer"),
+        method("listCards", "creates customer"),
+    ]}]
+
+    report = render_report([(ENDPOINT_SECTION, endpoint_report)], ReportMetadata(model="m"))
+
+    assert report.finding_count == 1
+    assert "`createCustomer`, `deleteCustomer`, `listCards` | no check on caller | - creates customer<br>- deletes customer |" in report.text
+
+
+def test_findings_are_grouped_under_one_section_per_severity_without_a_severity_column():
+    report = render_report([(ENV_SECTION, ENV_REPORT), (ENDPOINT_SECTION, ENDPOINT_REPORT)], ReportMetadata(model="m"))
+
+    assert report.text.index("### 🔴 High") < report.text.index("### 🟠 Medium")
+    assert "### 🟡 Low" not in report.text
+    assert "| Severity |" not in report.text
+    assert report.text.count(ENV_SECTION.description) == 1
+    assert report.text.index("#### Sensitive env vars") < report.text.index("#### Endpoints without full access control")
+
+
+def test_failed_investigations_are_listed_in_their_own_section():
+    report = render_report([(ENV_SECTION, ENV_REPORT), (ENDPOINT_SECTION, None)], ReportMetadata(model="m"))
+
+    assert "### ⚠️ Failed investigations\n\n#### Endpoints without full access control\n\n" in report.text
+    assert not report.complete
+
+
+def test_read_and_write_access_to_a_bucket_share_a_row_with_labelled_reasons():
+    def bucket(access, status, reason):
+        return {"_id": "b1", "name": "Licenses", "path": "bucket/Licenses", "report": {
+            "access": access, "row_level_security_status": status, "reason": reason, "includes_sensitive_information": True}}
+
+    access_report = [{"policy_id": "p1", "policy_name": "User", "path": "policy/User", "attachments": [], "affected_statements": [
+        {"statement_index": 1, "affected_buckets": [bucket("read", "applied_but_in_risk", "admin bypasses the owner check")]},
+        {"statement_index": 2, "affected_buckets": [bucket("write", "not_applied", "write is always true")]},
+    ]}]
+
+    report = render_report([(ACCESS_SECTION, access_report)], ReportMetadata(model="m"))
+
+    assert report.finding_count == 1
+    assert "| User | Licenses | - Read: admin bypasses the owner check<br>- Write: write is always true |" in report.text
+    assert "### 🟠 Medium" not in report.text

@@ -7,7 +7,7 @@ SEVERITIES = {
     ("applied_but_in_risk", True): "medium",
     ("applied_but_in_risk", False): "low",
 }
-STATUS_LABELS = {"not_applied": "Not applied", "applied_but_in_risk": "Applied, but at risk"}
+SEVERITY_ORDER = ("high", "medium", "low")
 MAX_SNIPPET_CHARS = 150
 ATTACHMENT_COLUMNS = ("Policy", "Attached in", "Attaching code", "Defined in", "Defining code")
 
@@ -37,23 +37,37 @@ def attachments_table(report, links):
     ]
     if not rows:
         return ""
-    return "#### Where these policies are attached to users\n\n" + table(ATTACHMENT_COLUMNS, rows)
+    return "### Where these policies are attached to users\n\n" + table(ATTACHMENT_COLUMNS, rows)
+
+
+def findings(report):
+    grouped = {}
+    for policy in report:
+        for statement in policy["affected_statements"]:
+            for bucket in statement["affected_buckets"]:
+                key = (policy["policy_name"], policy["path"], bucket["name"], bucket["path"])
+                grouped.setdefault(key, []).append((statement["statement_index"], bucket["report"]))
+    return grouped
+
+
+def reasons(granted):
+    by_access = {}
+    for _, access_report in granted:
+        by_access.setdefault(access_report["access"], []).append(access_report["reason"])
+    shortest = {access: min(texts, key=len) for access, texts in by_access.items()}
+    if len(shortest) == 1:
+        return escape(next(iter(shortest.values())))
+    return "<br>".join(f"- {access.capitalize()}: {escape(reason)}" for access, reason in sorted(shortest.items()))
 
 
 def rows(report, links):
     return [
-        Row(severity(bucket["report"]), (
-            links.resource(policy["policy_name"], policy["path"]),
-            code(f"statement[{statement['statement_index']}]"),
-            links.resource(bucket["name"], bucket["path"]),
-            bucket["report"]["access"].capitalize(),
-            "Yes" if bucket["report"]["includes_sensitive_information"] else "No",
-            STATUS_LABELS[bucket["report"]["row_level_security_status"]],
-            escape(bucket["report"]["reason"]),
+        Row(min((severity(r) for _, r in granted), key=SEVERITY_ORDER.index), (
+            links.resource(policy_name, policy_path),
+            links.resource(bucket_name, bucket_path),
+            reasons(granted),
         ))
-        for policy in report
-        for statement in policy["affected_statements"]
-        for bucket in statement["affected_buckets"]
+        for (policy_name, policy_path, bucket_name, bucket_path), granted in findings(report).items()
     ]
 
 
@@ -63,7 +77,7 @@ SECTION = Section(
         "Policies attached to users that can reach buckets without effective row-level security. "
         "Buckets holding sensitive data rank higher."
     ),
-    columns=("Policy", "Statement", "Bucket", "Access", "Sensitive data", "Row-level security", "Why"),
+    columns=("Policy", "Bucket", "Why"),
     rows=rows,
     appendix=attachments_table,
 )

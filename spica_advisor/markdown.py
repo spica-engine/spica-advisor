@@ -28,11 +28,9 @@ class Links:
 
     def resource(self, name, path):
         label = escape(name or path or "unknown").translate(LINK_LABEL_ESCAPES)
-        if not path:
-            return label
-        if self.source_url:
+        if path and self.source_url:
             return f"[{label}]({self.source_url}/{quote(path)})"
-        return f"{label} ({code(path)})"
+        return label
 
 
 @dataclass(frozen=True)
@@ -107,14 +105,25 @@ def failure_message(failure):
     return f"{FAILED_SECTION}\n\nReason: {escape(failure.reason)}" if failure.reason else FAILED_SECTION
 
 
-def render_section(section, rows, appendix="", failure=None):
-    if rows is None:
-        body = failure_message(failure or Failure())
-    elif not rows:
-        body = "No findings."
-    else:
-        body = table(["Severity", *section.columns], [[SEVERITY_LABELS[row.severity], *row.cells] for row in rows])
-    return "\n\n".join(part for part in (f"### {section.title}", section.description, body, appendix) if part)
+def render_severity(severity, results, described):
+    parts = [f"### {SEVERITY_LABELS[severity]}"]
+    for section, rows in results:
+        matching = [row.cells for row in rows or [] if row.severity == severity]
+        if matching:
+            description = [] if section.title in described else [section.description]
+            described.add(section.title)
+            parts += [f"#### {section.title}", *description, table(section.columns, matching)]
+    return "\n\n".join(parts) if len(parts) > 1 else ""
+
+
+def render_failures(reports, results):
+    failed = [(section, report) for (section, report), (_, rows) in zip(reports, results) if rows is None]
+    if not failed:
+        return ""
+    return "\n\n".join(
+        ["### ⚠️ Failed investigations"]
+        + [f"#### {section.title}\n\n{failure_message(report)}" for section, report in failed]
+    )
 
 
 def sorted_rows(rows):
@@ -132,13 +141,15 @@ def render_report(reports, metadata):
         section.appendix(report, links) if section.appendix and rows else ""
         for (section, report), (_, rows) in zip(reports, results)
     ]
-    text = "\n\n".join([
+    described = set()
+    text = "\n\n".join(part for part in [
         header(metadata),
         overview(results),
-        *(render_section(section, rows, appendix, report if rows is None else None)
-          for (section, rows), appendix, (_, report) in zip(results, appendices, reports)),
+        *(render_severity(severity, results, described) for severity in SEVERITIES),
+        *appendices,
+        render_failures(reports, results),
         DISCLAIMER,
-    ]) + "\n"
+    ] if part) + "\n"
     return MarkdownReport(
         text=text,
         finding_count=sum(len(rows) for _, rows in results if rows),
