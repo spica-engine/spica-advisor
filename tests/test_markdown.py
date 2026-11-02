@@ -59,7 +59,7 @@ def test_report_links_resources_to_the_scanned_commit():
     assert "Commit [`a1b2c3d`](https://github.com/o/r/commit/a1b2c3d4e5)" in report.text
     assert "[Workflow run](https://github.com/o/r/actions/runs/7)" in report.text
     assert ("| [Login](https://github.com/o/r/tree/a1b2c3d4e5/spica/function/Login) "
-            "| `resetPassword` | no check | updates users \\| without auth |") in report.text
+            "| `resetPassword`: updates users \\| without auth | no check |") in report.text
 
 
 def test_report_shows_plain_names_when_not_on_github():
@@ -191,7 +191,7 @@ def test_endpoint_methods_with_the_same_missing_check_share_a_row():
     report = render_report([(ENDPOINT_SECTION, endpoint_report)], ReportMetadata(model="m"))
 
     assert report.finding_count == 1
-    assert "`createCustomer`, `deleteCustomer`, `listCards` | no check on caller | - creates customer<br>- deletes customer |" in report.text
+    assert "- `createCustomer`: creates customer<br>- `deleteCustomer`: deletes customer<br>- `listCards`: creates customer | no check on caller |" in report.text
 
 
 def test_findings_are_grouped_under_one_section_per_severity_without_a_severity_column():

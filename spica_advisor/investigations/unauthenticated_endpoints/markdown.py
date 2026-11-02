@@ -19,9 +19,8 @@ def rows(report, links):
     return [
         Row(severity, (
             links.resource(function_name, path),
-            ", ".join(code(method["name"]) for method in methods),
+            bullet_list(f"{code(method['name'])}: {method['impact_reason']}" for method in methods),
             bullet_list(method["auth_reason"] for method in methods),
-            bullet_list(method["impact_reason"] for method in methods),
         ))
         for (function_name, path, severity, auth), methods in findings(report).items()
     ]
@@ -31,6 +30,6 @@ SECTION = Section(
     title="Endpoints without full access control",
     description="Public HTTP functions with methods that have no authentication check, or that only check who the caller is. "
                 "Severity combines the missing check with what the method can do.",
-    columns=("Function", "Method", "Authentication", "Impact"),
+    columns=("Function", "Method and impact", "Auth"),
     rows=rows,
 )
