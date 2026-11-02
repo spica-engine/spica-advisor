@@ -7,6 +7,9 @@ Set sensitiveness_level to exactly one of:
   apikey, service_account, token, private_key.
 - low: the name indicates non-sensitive configuration, such as username, env,
   config, public_url, log_level, timeout, region, or feature flags.
+- low also covers names that only identify or point to something instead of holding
+  a secret: ids, arns, account numbers, secret names, and paths or filenames of public
+  material such as certificates.
 - medium: the name might indicate sensitive information but not sure without knowing it's value or usage,
   such as client_key, public_key, connection_url(may contain credentials, may not).
   Actually it's the grey area between high and low sensitivity.
