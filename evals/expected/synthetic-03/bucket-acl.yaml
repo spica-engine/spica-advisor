@@ -4,7 +4,7 @@ syn3-bkt-profiles:
   write: applied
 syn3-bkt-tickets:
   includes_sensitive_information: true
-  read: applied_but_in_risk
+  read: applied
   write: applied
 syn3-bkt-payments:
   includes_sensitive_information: true
@@ -12,15 +12,15 @@ syn3-bkt-payments:
   write: applied
 syn3-bkt-campaigns:
   includes_sensitive_information: false
-  read: not_applied
-  write: not_applied
+  read: applied_but_in_risk
+  write: applied
 syn3-bkt-config:
   includes_sensitive_information: false
   read: not_applied
-  write: not_applied
+  write: applied
 syn3-bkt-addresses:
   includes_sensitive_information: true
-  read: applied_but_in_risk
+  read: applied
   write: applied
 syn3-bkt-maintenance:
   includes_sensitive_information: false
@@ -29,4 +29,12 @@ syn3-bkt-maintenance:
 syn3-bkt-layouts:
   includes_sensitive_information: false
   read: applied
-  write: applied_but_in_risk
+  write: applied
+syn3-bkt-reviews:
+  includes_sensitive_information: true
+  read: applied_but_in_risk
+  write: applied
+syn3-bkt-checklists:
+  includes_sensitive_information: false
+  read: applied_but_in_risk
+  write: applied

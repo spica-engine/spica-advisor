@@ -1,0 +1,23 @@
+_id: syn3-bkt-checklists
+title: Shared Checklists
+description: Shared Checklists records
+icon: view_stream
+primary: items
+readOnly: false
+history: false
+properties:
+  items:
+    type: string
+    title: items
+    options: {}
+  owner:
+    type: string
+    title: owner
+    options: {}
+  shared:
+    type: string
+    title: shared
+    options: {}
+acl:
+  read: auth._id == document.owner || document.shared == true
+  write: auth._id == document.owner

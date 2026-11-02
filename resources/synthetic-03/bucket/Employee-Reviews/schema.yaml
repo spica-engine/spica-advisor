@@ -1,0 +1,27 @@
+_id: syn3-bkt-reviews
+title: Employee Reviews
+description: Employee Reviews records
+icon: view_stream
+primary: summary
+readOnly: false
+history: false
+properties:
+  summary:
+    type: string
+    title: summary
+    options: {}
+  rating:
+    type: string
+    title: rating
+    options: {}
+  department:
+    type: string
+    title: department
+    options: {}
+  reviewer:
+    type: string
+    title: reviewer
+    options: {}
+acl:
+  read: auth.attributes.department == document.department
+  write: auth._id == document.reviewer
