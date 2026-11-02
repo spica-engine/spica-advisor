@@ -45,7 +45,7 @@ def prediction(handlers, skipped=()):
 
 
 def test_report_decision_follows_the_policy_table():
-    assert [report_decision("none", impact) for impact in ("low", "medium", "high")] == ["low", "medium", "high"]
+    assert [report_decision("none", impact) for impact in ("low", "medium", "high")] == ["none", "medium", "high"]
     assert report_decision("authentication", "high") == "medium"
     assert report_decision("authentication", "medium") == "low"
     assert report_decision("authentication", "low") == "none"

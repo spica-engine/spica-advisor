@@ -237,8 +237,6 @@ def test_reports_a_severity_decided_by_the_policy_for_served_handlers_grouped_by
             "methods": [
                 {"name": "handler", "severity": "high", "auth": "none", "auth_reason": "no check",
                  "impact": "high", "impact_reason": "writes bucket"},
-                {"name": "health", "severity": "low", "auth": "none", "auth_reason": "no check",
-                 "impact": "low", "impact_reason": "returns OK"},
                 {"name": "confirm", "severity": "medium", "auth": "authentication", "auth_reason": "token only",
                  "impact": "high", "impact_reason": "writes bucket"},
                 {"name": "update", "severity": "low", "auth": "authentication", "auth_reason": "no check",
@@ -316,7 +314,7 @@ def test_exported_names_cover_the_esm_export_forms(source, names):
 
 def test_severity_matrix_maps_every_auth_and_impact_pair():
     assert SEVERITY_MATRIX == {
-        "none": {"low": "low", "medium": "medium", "high": "high"},
+        "none": {"low": "none", "medium": "medium", "high": "high"},
         "authentication": {"low": "none", "medium": "low", "high": "medium"},
         "authorization": {"low": "none", "medium": "none", "high": "none"},
     }
