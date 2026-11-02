@@ -65,3 +65,15 @@ or set `CLAUDE_CODE_OAUTH_TOKEN`. The model and effort come from the environment
 ```
 SPICA_ADVISOR_MODEL=claude-opus-5-5 SPICA_ADVISOR_EFFORT=high python main.py --project-dir path/to/spica-project
 ```
+
+### Re-rendering a report
+
+Every run saves each investigation's result as JSON in `--output-dir`, next to `run.json` with the model and effort.
+`--render-only` rebuilds `report.md` from those files without calling Claude, so changing how the report
+looks costs nothing:
+
+```
+python main.py --render-only --project-dir path/to/spica-project --output-dir output
+```
+
+Set `GITHUB_REPOSITORY`, `GITHUB_SHA` and `GITHUB_RUN_ID` to get the same links as a workflow run.

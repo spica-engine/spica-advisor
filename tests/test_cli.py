@@ -1,7 +1,7 @@
 import sys
 from types import SimpleNamespace
 
-from spica_advisor.cli import parse_args, run_investigations
+from spica_advisor.cli import load_saved_reports, parse_args, run_investigations
 from spica_advisor.investigation import InvestigationBuilder, InvestigationContext, InvestigationError
 from spica_advisor.investigations.sensitive_env_vars.markdown import SECTION as ENV_SECTION
 from spica_advisor.markdown import Failure
@@ -38,3 +38,20 @@ def test_an_unexpected_error_fails_the_investigation_without_leaking_its_message
     reports = run_investigations([investigation], SimpleNamespace(calls=[]), tmp_path, tmp_path)
 
     assert reports == {"env": Failure()}
+
+
+def test_render_only_flag_is_off_by_default(monkeypatch):
+    assert parse(monkeypatch).render_only is False
+    assert parse(monkeypatch, "--render-only").render_only is True
+
+
+def test_saved_reports_are_loaded_and_a_missing_one_becomes_a_failure(tmp_path):
+    (tmp_path / "env.json").write_text('[{"name": "TOKEN"}]', encoding="utf-8")
+    present = failing_investigation("env", InvestigationError("unused"))
+    absent = failing_investigation("other", InvestigationError("unused"))
+
+    reports = load_saved_reports([present, absent], tmp_path)
+
+    assert reports["env"] == [{"name": "TOKEN"}]
+    assert isinstance(reports["other"], Failure)
+    assert "No saved result for other" in reports["other"].reason

@@ -9,7 +9,7 @@ from spica_advisor.investigations import INVESTIGATIONS
 from spica_advisor.log import LOGGER, configure_logging
 from spica_advisor.markdown import Failure, render_report
 from spica_advisor.metrics import totals
-from spica_advisor.report import write_markdown, write_report
+from spica_advisor.report import read_report, read_run_details, write_markdown, write_report, write_run_details
 from spica_advisor.runner import ClaudeRunner
 
 
@@ -50,6 +50,11 @@ def parse_args():
             "comma-separated; runs all investigations when omitted or empty; "
             f"available: {', '.join(investigation.name for investigation in INVESTIGATIONS)}"
         ),
+    )
+    parser.add_argument(
+        "--render-only",
+        action="store_true",
+        help="build the Markdown report from the saved results in --output-dir without running any investigation",
     )
     parser.add_argument(
         "--github-summary",
@@ -120,6 +125,17 @@ def run_investigations(investigations, runner, project_dir, output_dir):
     return reports
 
 
+def load_saved_reports(investigations, output_dir):
+    reports = {}
+    for investigation in investigations:
+        try:
+            reports[investigation.name] = read_report(output_dir, investigation.name)
+        except (OSError, ValueError):
+            LOGGER.exception("No saved result for %s", investigation.name)
+            reports[investigation.name] = Failure(f"No saved result for {investigation.name}. Run it without --render-only first.")
+    return reports
+
+
 def publish(report, metadata, summary_path, issues):
     try:
         if summary_path:
@@ -135,17 +151,24 @@ def publish(report, metadata, summary_path, issues):
 def run():
     args = parse_args()
     configure_logging(args.debug, args.log_file, args.log_format)
+    investigations = selected_investigations(args.investigations)
     try:
-        runner = ClaudeRunner.from_env()
         summary_path = step_summary_path() if args.github_summary else None
         issues = GitHubIssues.from_env() if args.github_issue else None
+        if args.render_only:
+            run_details = read_run_details(args.output_dir)
+            reports = load_saved_reports(investigations, args.output_dir)
+        else:
+            runner = ClaudeRunner.from_env()
+            run_details = {"model": runner.model, "effort": runner.effort}
     except Exception:
         LOGGER.exception("Failed to initialize")
         raise SystemExit(1)
 
-    investigations = selected_investigations(args.investigations)
-    reports = run_investigations(investigations, runner, args.project_dir, args.output_dir)
-    metadata = report_metadata(runner.model, args.project_dir, runner.effort)
+    if not args.render_only:
+        reports = run_investigations(investigations, runner, args.project_dir, args.output_dir)
+        write_run_details(args.output_dir, **run_details)
+    metadata = report_metadata(run_details["model"], args.project_dir, run_details["effort"])
     report = render_report([(investigation.section, reports.get(investigation.name)) for investigation in investigations],
                            metadata)
     write_markdown(args.output_dir, report.text)
