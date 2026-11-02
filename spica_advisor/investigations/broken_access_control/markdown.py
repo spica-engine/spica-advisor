@@ -1,4 +1,4 @@
-from spica_advisor.markdown import Row, Section, code, escape, table
+from spica_advisor.markdown import Row, Section, escape
 
 
 SEVERITIES = {
@@ -8,36 +8,15 @@ SEVERITIES = {
     ("applied_but_in_risk", False): "low",
 }
 SEVERITY_ORDER = ("high", "medium", "low")
-MAX_SNIPPET_CHARS = 150
-ATTACHMENT_COLUMNS = ("Policy", "Attached in", "Attaching code", "Defined in", "Defining code")
 
 
 def severity(access_report):
     return SEVERITIES[access_report["row_level_security_status"], access_report["includes_sensitive_information"]]
 
 
-def snippet(text):
-    line = " ".join(text.split())
-    return line if len(line) <= MAX_SNIPPET_CHARS else line[:MAX_SNIPPET_CHARS - 1] + "…"
-
-
-def code_cells(location, links):
-    return links.resource(location["function_name"], location["path"]), escape(code(snippet(location["match"])))
-
-
-def attachments_table(report, links):
-    rows = [
-        [
-            links.resource(policy["policy_name"], policy["path"]),
-            *code_cells(attachment["attachment"], links),
-            *code_cells(attachment["definition"], links),
-        ]
-        for policy in report
-        for attachment in policy["attachments"]
-    ]
-    if not rows:
-        return ""
-    return "### Where these policies are attached to users\n\n" + table(ATTACHMENT_COLUMNS, rows)
+def attached_functions(policy, links):
+    functions = {attachment["attachment"]["path"]: attachment["attachment"]["function_name"] for attachment in policy["attachments"]}
+    return ", ".join(links.resource(name, path) for path, name in functions.items()) or "–"
 
 
 def findings(report):
@@ -61,9 +40,11 @@ def reasons(granted):
 
 
 def rows(report, links):
+    functions = {policy["path"]: attached_functions(policy, links) for policy in report}
     return [
         Row(min((severity(r) for _, r in granted), key=SEVERITY_ORDER.index), (
             links.resource(policy_name, policy_path),
+            functions[policy_path],
             links.resource(bucket_name, bucket_path),
             reasons(granted),
         ))
@@ -77,7 +58,6 @@ SECTION = Section(
         "Policies attached to users that can reach buckets without effective row-level security. "
         "Buckets holding sensitive data rank higher."
     ),
-    columns=("Policy", "Bucket", "Why"),
+    columns=("Policy", "Function", "Bucket", "Why"),
     rows=rows,
-    appendix=attachments_table,
 )

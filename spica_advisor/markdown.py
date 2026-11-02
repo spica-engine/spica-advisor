@@ -50,7 +50,6 @@ class Section:
     description: str
     columns: tuple[str, ...]
     rows: Callable[[Any, Links], list[Row]]
-    appendix: Callable[[Any, Links], str] | None = None
 
 
 @dataclass(frozen=True)
@@ -137,16 +136,11 @@ def render_report(reports, metadata):
         (section, None if isinstance(report, Failure) else sorted_rows(section.rows(report, links)))
         for section, report in reports
     ]
-    appendices = [
-        section.appendix(report, links) if section.appendix and rows else ""
-        for (section, report), (_, rows) in zip(reports, results)
-    ]
     described = set()
     text = "\n\n".join(part for part in [
         header(metadata),
         overview(results),
         *(render_severity(severity, results, described) for severity in SEVERITIES),
-        *appendices,
         render_failures(reports, results),
         DISCLAIMER,
     ] if part) + "\n"

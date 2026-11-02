@@ -68,30 +68,30 @@ def test_report_shows_plain_names_when_not_on_github():
     assert ("### 🟠 Medium\n\n#### Broken access control\n\n"
             "Policies attached to users that can reach buckets without effective row-level security. "
             "Buckets holding sensitive data rank higher.\n\n"
-            "| Policy | Bucket | Why |\n"
-            "| --- | --- | --- |\n"
-            "| Customer "
+            "| Policy | Function | Bucket | Why |\n"
+            "| --- | --- | --- | --- |\n"
+            "| Customer | Signup, Import "
             "| Payment Methods "
             "| filter can be bypassed |") in report.text
 
 
-def test_access_section_lists_where_policies_are_attached_and_defined():
-    report = render_report([(ACCESS_SECTION, ACCESS_REPORT)], ReportMetadata(model="m"))
+def test_access_rows_name_the_functions_that_attach_the_policy():
+    attachment = {"attachment": {"function_id": "f1", "function_name": "Signup", "path": "function/Signup", "match": "m"},
+                  "definition": {"function_id": "f1", "function_name": "Signup", "path": "function/Signup", "match": "m"}}
+    access_report = [{**ACCESS_REPORT[0], "attachments": [attachment, attachment]}]
 
-    attachments = report.text.split("### Where these policies are attached to users\n\n")[1]
-    assert attachments.startswith("| Policy | Attached in | Attaching code | Defined in | Defining code |")
-    assert ("| Customer | Signup "
-            "| `await Auth.policy.attach( user._id, POLICY \\|\\| fallback );` "
-            "| Signup | `const POLICY = process.env.CUSTOMER_POLICY;` |") in attachments
-    assert f"| Import | `{'x' * 149}…` | Constants |" in attachments
+    report = render_report([(ACCESS_SECTION, access_report)], GITHUB_METADATA)
+
+    assert "| [Customer](https://github.com/o/r/tree/a1b2c3d4e5/spica/policy/Customer) | [Signup](https://github.com/o/r/tree/a1b2c3d4e5/spica/function/Signup) |" in report.text
+    assert "Where these policies are attached" not in report.text
 
 
-def test_attachments_table_is_omitted_without_attachments():
+def test_access_rows_show_a_dash_without_attachments():
     access_report = [{**ACCESS_REPORT[0], "attachments": []}]
 
     report = render_report([(ACCESS_SECTION, access_report)], ReportMetadata(model="m"))
 
-    assert "Where these policies are attached" not in report.text
+    assert "| Customer | – | Payment Methods |" in report.text
 
 
 @pytest.mark.parametrize(("status", "sensitive", "label"), [
@@ -175,7 +175,7 @@ def test_access_findings_merge_statements_granting_the_same_access_to_a_bucket_k
     report = render_report([(ACCESS_SECTION, access_report)], ReportMetadata(model="m"))
 
     assert report.finding_count == 1
-    assert "| User | Services | write is always true |" in report.text
+    assert "| User | – | Services | write is always true |" in report.text
 
 
 def test_endpoint_methods_with_the_same_missing_check_share_a_row():
@@ -224,5 +224,5 @@ def test_read_and_write_access_to_a_bucket_share_a_row_with_labelled_reasons():
     report = render_report([(ACCESS_SECTION, access_report)], ReportMetadata(model="m"))
 
     assert report.finding_count == 1
-    assert "| User | Licenses | - Read: admin bypasses the owner check<br>- Write: write is always true |" in report.text
+    assert "| User | – | Licenses | - Read: admin bypasses the owner check<br>- Write: write is always true |" in report.text
     assert "### 🟠 Medium" not in report.text
