@@ -4,7 +4,7 @@ from spica_advisor.code_slice import CodeIndex
 from spica_advisor.investigations.unauthenticated_endpoints.agents import ENDPOINT_ASSESSMENT_AGENT
 from spica_advisor.investigations.unauthenticated_endpoints.batches import Packer
 from spica_advisor.investigations.unauthenticated_endpoints.context import UnauthenticatedEndpointsContext
-from spica_advisor.investigations.unauthenticated_endpoints.handlers import has_public_endpoint, served_handler_names
+from spica_advisor.investigations.unauthenticated_endpoints.handlers import handler_line, has_public_endpoint, served_handler_names
 from spica_advisor.investigations.unauthenticated_endpoints.policy import NOT_REPORTED, report_decision
 from spica_advisor.log import LOGGER
 from spica_advisor.resources import load_functions, resource_locations
@@ -59,12 +59,13 @@ def analyze_endpoints(context: UnauthenticatedEndpointsContext, build_calls=endp
         context.skipped_handlers.extend(response.skipped)
 
 
-def reported_method(handler):
+def reported_method(handler, source):
     severity = report_decision(handler.auth, handler.impact)
     if severity == NOT_REPORTED:
         return None
     return {
         "name": handler.name,
+        "line": handler_line(source, handler.name),
         "severity": severity,
         "auth": handler.auth,
         "auth_reason": handler.auth_reason,
@@ -73,8 +74,8 @@ def reported_method(handler):
     }
 
 
-def function_report(assessment, location, handler_names):
-    methods = [reported_method(handler) for handler in assessment.handlers if handler.name in handler_names]
+def function_report(assessment, location, handler_names, source):
+    methods = [reported_method(handler, source) for handler in assessment.handlers if handler.name in handler_names]
     return {
         "function_id": assessment.function_id,
         "function_name": location.get("name"),
@@ -83,11 +84,17 @@ def function_report(assessment, location, handler_names):
     }
 
 
+def entry_source(project_dir, location):
+    path = location.get("path")
+    return (project_dir / path).read_text(encoding="utf-8") if path else ""
+
+
 def report_unauthenticated_endpoints(context: UnauthenticatedEndpointsContext):
     handlers = {function["_id"]: set(function["handlers"]) for function in context.analysis_inputs}
     locations = resource_locations(context.project_dir, "function")
     reports = [
-        function_report(assessment, locations.get(assessment.function_id, {}), handlers[assessment.function_id])
+        function_report(assessment, locations.get(assessment.function_id, {}), handlers[assessment.function_id],
+                        entry_source(context.project_dir, locations.get(assessment.function_id, {})))
         for assessment in context.assessments
         if assessment.function_id in handlers
     ]

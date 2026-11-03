@@ -24,7 +24,7 @@ def findings(report):
     for policy in report:
         for statement in policy["affected_statements"]:
             for bucket in statement["affected_buckets"]:
-                key = (policy["policy_name"], policy["path"], bucket["name"], bucket["path"])
+                key = (policy["policy_name"], policy["path"], bucket["name"], bucket["path"], bucket.get("line"), bucket.get("end_line"))
                 grouped.setdefault(key, []).append((statement["statement_index"], bucket["report"]))
     return grouped
 
@@ -45,10 +45,10 @@ def rows(report, links):
         Row(min((severity(r) for _, r in granted), key=SEVERITY_ORDER.index), (
             links.resource(policy_name, policy_path),
             functions[policy_path],
-            links.resource(bucket_name, bucket_path),
+            links.resource(bucket_name, bucket_path, bucket_line, bucket_end_line),
             reasons(granted),
         ))
-        for (policy_name, policy_path, bucket_name, bucket_path), granted in findings(report).items()
+        for (policy_name, policy_path, bucket_name, bucket_path, bucket_line, bucket_end_line), granted in findings(report).items()
     ]
 
 

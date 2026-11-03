@@ -33,6 +33,20 @@ def exported_names(source):
     return names
 
 
+def handler_line(source, name):
+    if name == DEFAULT_EXPORT:
+        match = DEFAULT_EXPORT_DECLARATION.search(source)
+    else:
+        match = next(
+            (m for m in DECLARED_EXPORT.finditer(source) if m.group(1) == name),
+            None,
+        ) or next(
+            (m for m in EXPORT_LIST.finditer(source) if name in (item.split()[-1] for item in m.group(1).split(",") if item.strip())),
+            None,
+        )
+    return source.count("\n", 0, match.start()) + 1 if match else None
+
+
 def served_handler_names(function):
     # A trigger whose handler is not exported runs no code, so it is not an endpoint.
     exported = exported_names(function["content"])

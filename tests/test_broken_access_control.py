@@ -84,6 +84,8 @@ def test_findings_name_policies_and_buckets_with_their_paths(tmp_path):
             "_id": "b1",
             "name": "Payment Methods",
             "path": "bucket/Payment-Methods/schema.yaml",
+            "line": None,
+            "end_line": None,
             "report": {
                 "access": "read",
                 "row_level_security_status": "not_applied",

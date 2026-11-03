@@ -25,7 +25,8 @@ def assess_sensitiveness(context: SensitiveEnvVarsContext):
 
 
 def env_var_report(env_var_id, location, report):
-    return {"_id": env_var_id, "name": location.get("name"), "path": location.get("path"), "report": report}
+    return {"_id": env_var_id, "name": location.get("name"), "path": location.get("path"),
+            "line": location.get("line"), "report": report}
 
 
 def report_sensitive_env_vars(context: SensitiveEnvVarsContext):

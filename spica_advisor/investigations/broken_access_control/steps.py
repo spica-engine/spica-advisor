@@ -150,6 +150,8 @@ def map_findings_to_policies(context: BrokenAccessControlContext):
                         "_id": bucket_id,
                         "name": bucket_location.get("name"),
                         "path": bucket_location.get("path"),
+                        "line": bucket_location.get("line"),
+                        "end_line": bucket_location.get("end_line"),
                         "report": access_report,
                     })
                     risky_bucket_ids.add(bucket_id)

@@ -4,7 +4,7 @@ from spica_advisor.markdown import Row, Section, escape
 def rows(report, links):
     return [
         Row(entry["report"]["sensitiveness_level"], (
-            links.resource(entry["name"], entry["path"]),
+            links.resource(entry["name"], entry["path"], entry.get("line")),
             escape(entry["report"]["reason"]),
         ))
         for entry in report

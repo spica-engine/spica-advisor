@@ -19,7 +19,7 @@ def rows(report, links):
     return [
         Row(severity, (
             links.resource(function_name, path),
-            bullet_list(f"{code(method['name'])}: {method['impact_reason']}" for method in methods),
+            bullet_list(f"{links.resource(code(method['name']), path, method.get('line'))}: {method['impact_reason']}" for method in methods),
             bullet_list(method["auth_reason"] for method in methods),
         ))
         for (function_name, path, severity, auth), methods in findings(report).items()

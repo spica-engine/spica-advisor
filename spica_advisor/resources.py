@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import yaml
@@ -29,6 +30,33 @@ def function_entry_file(folder):
     return folder / "schema.yaml"
 
 
+def line_number(text, offset):
+    return text.count("\n", 0, offset) + 1
+
+
+def acl_lines(text):
+    start = re.search(r"^acl:", text, re.M)
+    if not start:
+        return {}
+    following = re.search(r"^\S", text[start.end():], re.M)
+    block_end = start.end() + following.start() if following else len(text)
+    return {"line": line_number(text, start.start()), "end_line": line_number(text, len(text[:block_end].rstrip()) - 1)}
+
+
+def key_line(text):
+    key = re.search(r"^key:", text, re.M)
+    return {"line": line_number(text, key.start())} if key else {}
+
+
+def anchor_lines(kind, schema_path):
+    text = schema_path.read_text(encoding="utf-8")
+    if kind == "bucket":
+        return acl_lines(text)
+    if kind == "env-var":
+        return key_line(text)
+    return {}
+
+
 def resource_locations(project_dir, kind):
     locations = {}
     for schema_path in (project_dir / kind).rglob("schema.yaml"):
@@ -38,6 +66,7 @@ def resource_locations(project_dir, kind):
             locations[schema["_id"]] = {
                 "name": schema.get(RESOURCE_NAME_KEYS[kind]),
                 "path": file.relative_to(project_dir).as_posix(),
+                **anchor_lines(kind, schema_path),
             }
     return locations
 

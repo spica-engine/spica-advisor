@@ -26,11 +26,18 @@ def code(text):
 class Links:
     source_url: str | None = None
 
-    def resource(self, name, path):
+    def url(self, path, line=None, end_line=None):
+        if not (path and self.source_url):
+            return None
+        anchor = ""
+        if line:
+            anchor = f"#L{line}" + (f"-L{end_line}" if end_line and end_line > line else "")
+        return f"{self.source_url.replace('/tree/', '/blob/', 1)}/{quote(path)}{anchor}"
+
+    def resource(self, name, path, line=None, end_line=None):
         label = escape(name or path or "unknown").translate(LINK_LABEL_ESCAPES)
-        if path and self.source_url:
-            return f"[{label}]({self.source_url.replace('/tree/', '/blob/', 1)}/{quote(path)})"
-        return label
+        url = self.url(path, line, end_line)
+        return f"[{label}]({url})" if url else label
 
 
 @dataclass(frozen=True)

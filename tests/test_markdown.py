@@ -59,7 +59,7 @@ def test_report_links_resources_to_the_scanned_commit():
     assert "Commit [`a1b2c3d`](https://github.com/o/r/commit/a1b2c3d4e5)" in report.text
     assert "[Workflow run](https://github.com/o/r/actions/runs/7)" in report.text
     assert ("| [Login](https://github.com/o/r/blob/a1b2c3d4e5/spica/function/Login) "
-            "| `resetPassword`: updates users \\| without auth | no check |") in report.text
+            "| [`resetPassword`](https://github.com/o/r/blob/a1b2c3d4e5/spica/function/Login): updates users \\| without auth | no check |") in report.text
 
 
 def test_report_shows_plain_names_when_not_on_github():
@@ -226,3 +226,11 @@ def test_read_and_write_access_to_a_bucket_share_a_row_with_labelled_reasons():
     assert report.finding_count == 1
     assert "| User | – | Licenses | - Read: admin bypasses the owner check<br>- Write: write is always true |" in report.text
     assert "### 🟠 Medium" not in report.text
+
+
+def test_links_anchor_to_a_line_or_a_line_range():
+    links = Links("https://github.com/o/r/tree/sha")
+
+    assert links.resource("Plans", "bucket/Plans/schema.yaml", 3, 9) == "[Plans](https://github.com/o/r/blob/sha/bucket/Plans/schema.yaml#L3-L9)"
+    assert links.resource("K", "env-var/K/schema.yaml", 2) == "[K](https://github.com/o/r/blob/sha/env-var/K/schema.yaml#L2)"
+    assert links.resource("K", "env-var/K/schema.yaml", 2, 2).endswith("#L2)")
