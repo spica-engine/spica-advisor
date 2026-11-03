@@ -50,13 +50,13 @@ def test_reports_only_medium_and_high_env_vars(tmp_path):
         {
             "_id": "id-1",
             "name": "API_KEY",
-            "path": "env-var/API_KEY",
+            "path": "env-var/API_KEY/schema.yaml",
             "report": {"sensitiveness_level": "high", "reason": "credential"},
         },
         {
             "_id": "id-2",
             "name": "ADMIN_EMAIL",
-            "path": "env-var/ADMIN_EMAIL",
+            "path": "env-var/ADMIN_EMAIL/schema.yaml",
             "report": {"sensitiveness_level": "medium", "reason": "personal data"},
         },
     ]

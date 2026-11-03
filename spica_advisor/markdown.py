@@ -29,7 +29,7 @@ class Links:
     def resource(self, name, path):
         label = escape(name or path or "unknown").translate(LINK_LABEL_ESCAPES)
         if path and self.source_url:
-            return f"[{label}]({self.source_url}/{quote(path)})"
+            return f"[{label}]({self.source_url.replace('/tree/', '/blob/', 1)}/{quote(path)})"
         return label
 
 

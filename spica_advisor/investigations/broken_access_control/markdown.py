@@ -58,6 +58,6 @@ SECTION = Section(
         "Policies attached to users that can reach buckets without effective row-level security. "
         "Buckets holding sensitive data rank higher."
     ),
-    columns=("Policy", "Function", "Bucket", "Why"),
+    columns=("Policy", "Attached by", "Bucket", "Why"),
     rows=rows,
 )

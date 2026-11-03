@@ -233,7 +233,7 @@ def test_reports_a_severity_decided_by_the_policy_for_served_handlers_grouped_by
         {
             "function_id": "fn-1",
             "function_name": "fn-1",
-            "path": "function/fn-1",
+            "path": "function/fn-1/index.mjs",
             "methods": [
                 {"name": "handler", "severity": "high", "auth": "none", "auth_reason": "no check",
                  "impact": "high", "impact_reason": "writes bucket"},

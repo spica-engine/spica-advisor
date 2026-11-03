@@ -21,14 +21,23 @@ def load_schemas(path):
     return schemas
 
 
+def function_entry_file(folder):
+    for extension in FUNCTION_EXTENSIONS:
+        entry = folder / f"index.{extension}"
+        if entry.is_file():
+            return entry
+    return folder / "schema.yaml"
+
+
 def resource_locations(project_dir, kind):
     locations = {}
     for schema_path in (project_dir / kind).rglob("schema.yaml"):
         schema = read_schema(schema_path)
         if schema and schema.get("_id"):
+            file = function_entry_file(schema_path.parent) if kind == "function" else schema_path
             locations[schema["_id"]] = {
                 "name": schema.get(RESOURCE_NAME_KEYS[kind]),
-                "path": schema_path.parent.relative_to(project_dir).as_posix(),
+                "path": file.relative_to(project_dir).as_posix(),
             }
     return locations
 

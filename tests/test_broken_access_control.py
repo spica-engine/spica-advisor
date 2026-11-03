@@ -65,25 +65,25 @@ def test_findings_name_policies_and_buckets_with_their_paths(tmp_path):
     assert context.report == [{
         "policy_id": "p1",
         "policy_name": "Customer Policy",
-        "path": "policy/Customer",
+        "path": "policy/Customer/schema.yaml",
         "attachments": [
             {
-                "attachment": {"function_id": "f1", "function_name": "Signup", "path": "function/Signup",
+                "attachment": {"function_id": "f1", "function_name": "Signup", "path": "function/Signup/schema.yaml",
                                "match": "Auth.policy.attach(id, POLICY)"},
-                "definition": {"function_id": "f3", "function_name": "Constants", "path": "function/Constants",
+                "definition": {"function_id": "f3", "function_name": "Constants", "path": "function/Constants/schema.yaml",
                                "match": "const POLICY = 'p1';"},
             },
             {
-                "attachment": {"function_id": "f1", "function_name": "Signup", "path": "function/Signup",
+                "attachment": {"function_id": "f1", "function_name": "Signup", "path": "function/Signup/schema.yaml",
                                "match": "Auth.policy.attach(id, POLICY)"},
-                "definition": {"function_id": "f3", "function_name": "Constants", "path": "function/Constants",
+                "definition": {"function_id": "f3", "function_name": "Constants", "path": "function/Constants/schema.yaml",
                                "match": "const POLICY = process.env.P;"},
             },
         ],
         "affected_statements": [{"statement_index": 0, "affected_buckets": [{
             "_id": "b1",
             "name": "Payment Methods",
-            "path": "bucket/Payment-Methods",
+            "path": "bucket/Payment-Methods/schema.yaml",
             "report": {
                 "access": "read",
                 "row_level_security_status": "not_applied",

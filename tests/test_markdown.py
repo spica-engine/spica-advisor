@@ -58,7 +58,7 @@ def test_report_links_resources_to_the_scanned_commit():
 
     assert "Commit [`a1b2c3d`](https://github.com/o/r/commit/a1b2c3d4e5)" in report.text
     assert "[Workflow run](https://github.com/o/r/actions/runs/7)" in report.text
-    assert ("| [Login](https://github.com/o/r/tree/a1b2c3d4e5/spica/function/Login) "
+    assert ("| [Login](https://github.com/o/r/blob/a1b2c3d4e5/spica/function/Login) "
             "| `resetPassword`: updates users \\| without auth | no check |") in report.text
 
 
@@ -68,7 +68,7 @@ def test_report_shows_plain_names_when_not_on_github():
     assert ("### 🟠 Medium\n\n#### Broken access control\n\n"
             "Policies attached to users that can reach buckets without effective row-level security. "
             "Buckets holding sensitive data rank higher.\n\n"
-            "| Policy | Function | Bucket | Why |\n"
+            "| Policy | Attached by | Bucket | Why |\n"
             "| --- | --- | --- | --- |\n"
             "| Customer | Signup, Import "
             "| Payment Methods "
@@ -82,7 +82,7 @@ def test_access_rows_name_the_functions_that_attach_the_policy():
 
     report = render_report([(ACCESS_SECTION, access_report)], GITHUB_METADATA)
 
-    assert "| [Customer](https://github.com/o/r/tree/a1b2c3d4e5/spica/policy/Customer) | [Signup](https://github.com/o/r/tree/a1b2c3d4e5/spica/function/Signup) |" in report.text
+    assert "| [Customer](https://github.com/o/r/blob/a1b2c3d4e5/spica/policy/Customer) | [Signup](https://github.com/o/r/blob/a1b2c3d4e5/spica/function/Signup) |" in report.text
     assert "Where these policies are attached" not in report.text
 
 
