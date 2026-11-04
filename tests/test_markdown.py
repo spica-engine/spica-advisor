@@ -94,15 +94,19 @@ def test_access_rows_show_a_dash_without_attachments():
     assert "| Customer | – | Payment Methods |" in report.text
 
 
-@pytest.mark.parametrize(("status", "sensitive", "label"), [
-    ("not_applied", True, "🔴 High"),
-    ("not_applied", False, "🟠 Medium"),
-    ("applied_but_in_risk", True, "🟠 Medium"),
-    ("applied_but_in_risk", False, "🟡 Low"),
+@pytest.mark.parametrize(("access", "status", "sensitive", "label"), [
+    ("write", "not_applied", True, "🔴 High"),
+    ("write", "not_applied", False, "🟠 Medium"),
+    ("write", "applied_but_in_risk", True, "🟠 Medium"),
+    ("write", "applied_but_in_risk", False, "🟡 Low"),
+    ("read", "not_applied", True, "🔴 High"),
+    ("read", "not_applied", False, "🟡 Low"),
+    ("read", "applied_but_in_risk", True, "🟠 Medium"),
+    ("read", "applied_but_in_risk", False, "🟡 Low"),
 ])
-def test_access_severity_rises_with_bucket_sensitivity(status, sensitive, label):
+def test_access_severity_rises_with_bucket_sensitivity_and_write_access(access, status, sensitive, label):
     bucket = {"_id": "b1", "name": "B", "path": "bucket/B", "report": {
-        "access": "write", "row_level_security_status": status, "reason": "r", "includes_sensitive_information": sensitive}}
+        "access": access, "row_level_security_status": status, "reason": "r", "includes_sensitive_information": sensitive}}
     access_report = [{"policy_id": "p1", "policy_name": "P", "path": "policy/P", "attachments": [],
                       "affected_statements": [{"statement_index": 0, "affected_buckets": [bucket]}]}]
 

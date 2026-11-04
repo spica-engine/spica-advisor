@@ -8,10 +8,15 @@ SEVERITIES = {
     ("applied_but_in_risk", False): "low",
 }
 SEVERITY_ORDER = ("high", "medium", "low")
+READ_OF_NON_SENSITIVE_DATA = ("read", "not_applied", False)
 
 
 def severity(access_report):
-    return SEVERITIES[access_report["row_level_security_status"], access_report["includes_sensitive_information"]]
+    status = access_report["row_level_security_status"]
+    sensitive = access_report["includes_sensitive_information"]
+    if (access_report["access"], status, sensitive) == READ_OF_NON_SENSITIVE_DATA:
+        return "low"
+    return SEVERITIES[status, sensitive]
 
 
 def attached_functions(policy, links):
