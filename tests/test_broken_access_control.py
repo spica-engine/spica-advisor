@@ -68,15 +68,15 @@ def test_findings_name_policies_and_buckets_with_their_paths(tmp_path):
         "path": "policy/Customer/schema.yaml",
         "attachments": [
             {
-                "attachment": {"function_id": "f1", "function_name": "Signup", "path": "function/Signup/schema.yaml",
+                "attachment": {"function_id": "f1", "function_name": "Signup", "path": "function/Signup/schema.yaml", "line": None,
                                "match": "Auth.policy.attach(id, POLICY)"},
-                "definition": {"function_id": "f3", "function_name": "Constants", "path": "function/Constants/schema.yaml",
+                "definition": {"function_id": "f3", "function_name": "Constants", "path": "function/Constants/schema.yaml", "line": None,
                                "match": "const POLICY = 'p1';"},
             },
             {
-                "attachment": {"function_id": "f1", "function_name": "Signup", "path": "function/Signup/schema.yaml",
+                "attachment": {"function_id": "f1", "function_name": "Signup", "path": "function/Signup/schema.yaml", "line": None,
                                "match": "Auth.policy.attach(id, POLICY)"},
-                "definition": {"function_id": "f3", "function_name": "Constants", "path": "function/Constants/schema.yaml",
+                "definition": {"function_id": "f3", "function_name": "Constants", "path": "function/Constants/schema.yaml", "line": None,
                                "match": "const POLICY = process.env.P;"},
             },
         ],
@@ -116,3 +116,17 @@ def test_skips_agents_when_project_has_no_functions(tmp_path):
     write_schema(tmp_path, "bucket/Orders", "_id: b1\ntitle: Orders\n")
 
     assert broken_access_control.build().run(tmp_path, FailingRunner()) == []
+
+
+def test_attachment_line_is_the_first_line_containing_the_quoted_code(tmp_path):
+    from spica_advisor.investigations.broken_access_control.steps import match_line
+
+    (tmp_path / "function" / "Signup").mkdir(parents=True)
+    (tmp_path / "function" / "Signup" / "index.mjs").write_text(
+        "export default async () => {\n  await Auth.policy.attach(\n    user._id,\n    POLICY\n  );\n};\n", encoding="utf-8")
+    path = "function/Signup/index.mjs"
+
+    assert match_line(tmp_path, path, "  await Auth.policy.attach(\n    user._id,") == 2
+    assert match_line(tmp_path, path, "somethingElse()") is None
+    assert match_line(tmp_path, None, "Auth.policy.attach(") is None
+    assert match_line(tmp_path, path, "  \n") is None

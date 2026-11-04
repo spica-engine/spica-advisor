@@ -15,8 +15,11 @@ def severity(access_report):
 
 
 def attached_functions(policy, links):
-    functions = {attachment["attachment"]["path"]: attachment["attachment"]["function_name"] for attachment in policy["attachments"]}
-    return ", ".join(links.resource(name, path) for path, name in functions.items()) or "–"
+    functions = {
+        (attached["path"], attached.get("line")): attached["function_name"]
+        for attached in (attachment["attachment"] for attachment in policy["attachments"])
+    }
+    return ", ".join(links.resource(name, path, line) for (path, line), name in functions.items()) or "–"
 
 
 def findings(report):

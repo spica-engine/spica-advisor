@@ -234,3 +234,13 @@ def test_links_anchor_to_a_line_or_a_line_range():
     assert links.resource("Plans", "bucket/Plans/schema.yaml", 3, 9) == "[Plans](https://github.com/o/r/blob/sha/bucket/Plans/schema.yaml#L3-L9)"
     assert links.resource("K", "env-var/K/schema.yaml", 2) == "[K](https://github.com/o/r/blob/sha/env-var/K/schema.yaml#L2)"
     assert links.resource("K", "env-var/K/schema.yaml", 2, 2).endswith("#L2)")
+
+
+def test_attached_function_links_to_the_attaching_line():
+    attachment = {"attachment": {"function_id": "f1", "function_name": "Signup", "path": "function/Signup/index.mjs", "line": 12, "match": "m"},
+                  "definition": {"function_id": "f1", "function_name": "Signup", "path": "function/Signup/index.mjs", "line": 1, "match": "m"}}
+    access_report = [{**ACCESS_REPORT[0], "attachments": [attachment]}]
+
+    report = render_report([(ACCESS_SECTION, access_report)], GITHUB_METADATA)
+
+    assert "[Signup](https://github.com/o/r/blob/a1b2c3d4e5/spica/function/Signup/index.mjs#L12)" in report.text

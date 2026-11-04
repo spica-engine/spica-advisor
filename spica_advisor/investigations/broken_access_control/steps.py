@@ -48,17 +48,26 @@ def matches_report(policy, report):
     )
 
 
-def code_location(location, function_locations):
+def match_line(project_dir, path, match):
+    first_line = next((line.strip() for line in match.splitlines() if line.strip()), None)
+    if not (path and first_line):
+        return None
+    source = (project_dir / path).read_text(encoding="utf-8")
+    return next((number for number, line in enumerate(source.splitlines(), 1) if first_line in line), None)
+
+
+def code_location(location, function_locations, project_dir):
     function = function_locations.get(location.function_id, {})
     return {
         "function_id": location.function_id,
         "function_name": function.get("name"),
         "path": function.get("path"),
+        "line": match_line(project_dir, function.get("path"), location.match),
         "match": location.match,
     }
 
 
-def policy_attachments(policy, attachment_reports, function_locations):
+def policy_attachments(policy, attachment_reports, function_locations, project_dir):
     unique_reports = {
         (report.attachment.function_id, report.attachment.match,
          report.definition.function_id, report.definition.match): report
@@ -67,8 +76,8 @@ def policy_attachments(policy, attachment_reports, function_locations):
     }
     return [
         {
-            "attachment": code_location(report.attachment, function_locations),
-            "definition": code_location(report.definition, function_locations),
+            "attachment": code_location(report.attachment, function_locations, project_dir),
+            "definition": code_location(report.definition, function_locations, project_dir),
         }
         for report in unique_reports.values()
     ]
@@ -168,7 +177,7 @@ def map_findings_to_policies(context: BrokenAccessControlContext):
                 "policy_id": policy.get("_id"),
                 "policy_name": policy_location.get("name"),
                 "path": policy_location.get("path"),
-                "attachments": policy_attachments(policy, context.attachment_reports, function_locations),
+                "attachments": policy_attachments(policy, context.attachment_reports, function_locations, context.project_dir),
                 "affected_statements": affected_statements,
             })
 
