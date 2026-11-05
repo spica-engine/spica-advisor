@@ -22,8 +22,11 @@ instructions: |
   for operational/configuration data, such as Maintenance, Status, or
   Configuration for titles and fields like status, version, or in_use etc.
 
-  Each reason is one short sentence of at most 15 words, written for a developer who
-  knows the bucket. Say what lets the wrong person in, in plain words. Do not quote the
-  ACL expression, and do not repeat that it is read or write access.
-  Examples: "Anyone can read every document." / "Owner check compares a department shared
-  by many users." / "Anyone can read documents marked shared."
+  Each reason is one short sentence of at most 15 words, in plain words, for a developer who
+  knows the bucket. Start every reason with "Any user with this policy". If a condition
+  limits who, add it next, such as "in the same department" or "older than 20", only when
+  the ACL really has one. Then finish with what they can do and to which documents, such as
+  "can read every document" or "can write any document". Do not quote the ACL expression.
+  Examples: "Any user with this policy can read every document." / "Any user with this
+  policy can write any document." / "Any user with this policy in the same department can
+  read any document."
